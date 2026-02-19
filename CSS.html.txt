@@ -1,0 +1,35 @@
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+  body { font-family: 'Inter', sans-serif; background-color: #ffffff; }
+  .glass-effect { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); }
+  .card-hover { transition: all 0.3s ease; }
+  .card-hover:hover { transform: translateY(-2px); box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1); }
+  .animate-fade-in { animation: fadeIn 0.5s ease-out; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+  .loader { border-top-color: #3B82F6; -webkit-animation: spinner 1.5s linear infinite; animation: spinner 1.5s linear infinite; }
+  @-webkit-keyframes spinner { 0% { -webkit-transform: rotate(0deg); } 100% { -webkit-transform: rotate(360deg); } }
+  @keyframes spinner { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+  .scrollbar-hide::-webkit-scrollbar { display: none; }
+  .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+
+  /* Semáforos Criterios */
+  .traffic-light { width: 12px; height: 12px; border-radius: 50%; display: inline-block; vertical-align: middle; }
+  .tl-green { background-color: #10B981; box-shadow: 0 0 4px #10B981; }
+  .tl-yellow { background-color: #F59E0B; box-shadow: 0 0 4px #F59E0B; }
+  .tl-red { background-color: #EF4444; box-shadow: 0 0 4px #EF4444; }
+  .tl-gray { background-color: #D1D5DB; }
+
+  /* Semáforos Semanas (Grandes) */
+  .week-status-circle { width: 16px; height: 16px; border-radius: 4px; display: inline-block; margin-right: 6px; }
+  .ws-green { background-color: #22c55e; } /* Completed */
+  .ws-blue { background-color: #3b82f6; } /* In Progress */
+  .ws-orange { background-color: #f97316; } /* Closing Soon */
+  .ws-red { background-color: #ef4444; } /* Not Started / Expired Incomplete */
+  .ws-gray { background-color: #e5e7eb; } /* Future */
+
+  .usmp-title { color: #cc0000; }
+</style>

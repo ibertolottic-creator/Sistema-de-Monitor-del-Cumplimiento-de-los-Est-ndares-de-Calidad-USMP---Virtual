@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sistema de Gestión de Calidad</title>
+  <?!= include('CSS'); ?>
+</head>
+<body class="text-gray-800 h-screen flex flex-col overflow-hidden">
+
+  <?!= include('View_Home'); ?>
+  <?!= include('View_Dashboard'); ?>
+  <?!= include('View_Modal'); ?>
+
+  <?!= include('JS_Client'); ?>
+  
+</body>
+</html>

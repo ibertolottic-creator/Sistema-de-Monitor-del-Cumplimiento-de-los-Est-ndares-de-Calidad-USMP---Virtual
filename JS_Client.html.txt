@@ -1,0 +1,648 @@
+<script>
+  const CRITERIA_MAP = [
+    // 1. Org y gestión
+    {id:'c_1_1_pre', label:'1.1 Actualiza OVAs (Antes S1)', dim:'1. Organización y gestión académica virtual', week:'S1'},
+    {id:'c_1_2_s1', label:'1.2 Programa Sesiones y Anuncios (S1)', dim:'1. Organización y gestión académica virtual', week:'S1'},
+    // 2. Sesiones
+    {id:'c_2_1_b', label:'2.1 Sesión en línea (Bienvenida)', dim:'2. Sesiones de clase en línea', week:'S1'},
+    {id:'c_2_1_s1', label:'2.1 Sesión en línea (S1)', dim:'2. Sesiones de clase en línea', week:'S1'},
+    {id:'c_2_1_s2', label:'2.1 Sesión en línea (S2)', dim:'2. Sesiones de clase en línea', week:'S2'},
+    {id:'c_2_1_s3', label:'2.1 Sesión en línea (S3)', dim:'2. Sesiones de clase en línea', week:'S3'},
+    {id:'c_2_1_s4', label:'2.1 Sesión en línea (S4)', dim:'2. Sesiones de clase en línea', week:'S4'},
+    {id:'c_2_2_b', label:'2.2 Formatos Institucionales (Bienvenida)', dim:'2. Sesiones de clase en línea', week:'S1'},
+    {id:'c_2_2_s1', label:'2.2 Formatos Institucionales (S1)', dim:'2. Sesiones de clase en línea', week:'S1'},
+    {id:'c_2_2_s2', label:'2.2 Formatos Institucionales (S2)', dim:'2. Sesiones de clase en línea', week:'S2'},
+    {id:'c_2_2_s3', label:'2.2 Formatos Institucionales (S3)', dim:'2. Sesiones de clase en línea', week:'S3'},
+    {id:'c_2_2_s4', label:'2.2 Formatos Institucionales (S4)', dim:'2. Sesiones de clase en línea', week:'S4'},
+    // 3. Tutoría
+    {id:'c_3_1_s1', label:'3.1 Tutoría (S1)', dim:'3. Tutoría', week:'S1'},
+    {id:'c_3_1_s2', label:'3.1 Tutoría (S2)', dim:'3. Tutoría', week:'S2'},
+    {id:'c_3_1_s3', label:'3.1 Tutoría (S3)', dim:'3. Tutoría', week:'S3'},
+    {id:'c_3_1_s4', label:'3.1 Tutoría (S4)', dim:'3. Tutoría', week:'S4'},
+    // 4. Calificación
+    {id:'c_4_1_s1', label:'4.1 Califica actividades (S1)', dim:'4. Calificación y retroalimentación de actividades', week:'S1'},
+    {id:'c_4_1_s2', label:'4.1 Califica actividades (S2)', dim:'4. Calificación y retroalimentación de actividades', week:'S2'},
+    {id:'c_4_1_s3', label:'4.1 Califica actividades (S3)', dim:'4. Calificación y retroalimentación de actividades', week:'S3'},
+    {id:'c_4_1_s4', label:'4.1 Califica actividades (S4)', dim:'4. Calificación y retroalimentación de actividades', week:'S4'},
+    {id:'c_4_2_s1', label:'4.2 Retroalimenta y rúbrica (S1)', dim:'4. Calificación y retroalimentación de actividades', week:'S1'},
+    {id:'c_4_2_s2', label:'4.2 Retroalimenta y rúbrica (S2)', dim:'4. Calificación y retroalimentación de actividades', week:'S2'},
+    {id:'c_4_2_s3', label:'4.2 Retroalimenta y rúbrica (S3)', dim:'4. Calificación y retroalimentación de actividades', week:'S3'},
+    {id:'c_4_2_s4', label:'4.2 Retroalimenta y rúbrica (S4)', dim:'4. Calificación y retroalimentación de actividades', week:'S4'},
+    // 5. Atención
+    {id:'c_5_1_s1', label:'5.1 Comun. Alumnos (S1)', dim:'5. Atención a consultas', week:'S1'},
+    {id:'c_5_1_s2', label:'5.1 Comun. Alumnos (S2)', dim:'5. Atención a consultas', week:'S2'},
+    {id:'c_5_1_s3', label:'5.1 Comun. Alumnos (S3)', dim:'5. Atención a consultas', week:'S3'},
+    {id:'c_5_1_s4', label:'5.1 Comun. Alumnos (S4)', dim:'5. Atención a consultas', week:'S4'},
+    // 6. Riesgo
+    {id:'c_6_1_s1', label:'6.1 Riesgo Académico (S1)', dim:'6. Atención y seguimiento a estudiantes en riesgo académico', week:'S1'},
+    {id:'c_6_1_s2', label:'6.1 Riesgo Académico (S2)', dim:'6. Atención y seguimiento a estudiantes en riesgo académico', week:'S2'},
+    {id:'c_6_1_s3', label:'6.1 Riesgo Académico (S3)', dim:'6. Atención y seguimiento a estudiantes en riesgo académico', week:'S3'},
+    {id:'c_6_1_s4', label:'6.1 Riesgo Académico (S4)', dim:'6. Atención y seguimiento a estudiantes en riesgo académico', week:'S4'},
+    // 7. Conformidad
+    {id:'c_7_1_s4', label:'7.1 Conformidad de cierre (S4)', dim:'7. Conformidad y desarrollo de Informes', week:'S4'},
+    {id:'c_7_2_s4', label:'7.2 Informe Final (S4)', dim:'7. Conformidad y desarrollo de Informes', week:'S4'}
+  ];
+
+  let globalData=null; let currentCourse=null; let currentModule='VIRTUAL'; let currentWeekId='S1';
+
+  // --- LOGIC: STATUS AND COLOR ---
+  function parseDate(dateStr) {
+      if (!dateStr) return null;
+      let d = new Date(dateStr);
+      if (!isNaN(d.getTime())) return d;
+      
+      // Fallback for DD/MM/YYYY
+      const parts = dateStr.split('/');
+      if (parts.length === 3) {
+          // Month is 0-indexed in JS Date(Y, M, D)
+          d = new Date(parts[2], parts[1] - 1, parts[0]);
+          if (!isNaN(d.getTime())) return d;
+      }
+      return null;
+  }
+
+  // --- LOGIC: STATUS AND COLOR ---
+  function getWeekStats(startDateStr, weekKey, grades) {
+      const start = parseDate(startDateStr);
+      if (!start) return { status: 'LOCKED_FUTURE', progress: 0, color: 'ws-gray' };
+      
+      const oneDay = 24*60*60*1000;
+      let startOffset=0, endOffset=0;
+      
+      if(weekKey==='S1'){ startOffset=0; endOffset=9.99; }
+      else if(weekKey==='S2'){ startOffset=7; endOffset=16.99; }
+      else if(weekKey==='S3'){ startOffset=14; endOffset=23.99; }
+      else if(weekKey==='S4'){ startOffset=21; endOffset=30.99; }
+
+      const now = new Date();
+      // Set to midnight for date comparisons
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      
+      const openTime = new Date(start.getTime() + (startOffset*oneDay));
+      const closeTime = new Date(start.getTime() + (endOffset*oneDay));
+      
+      // Adjust to end of day for closeTime
+      closeTime.setHours(23, 59, 59, 999);
+      
+      let timeStatus = 'OPEN';
+      let timeLeftHours = 999;
+      
+      if (now < openTime) timeStatus = 'LOCKED_FUTURE';
+      else if (now > closeTime) timeStatus = 'LOCKED_PAST';
+      else {
+         const diff = closeTime - now.getTime();
+         timeLeftHours = diff / (1000*60*60);
+      }
+
+      const items = CRITERIA_MAP.filter(x => x.week === weekKey);
+      let filled=0;
+      items.forEach(i => { if(grades && grades[i.id] > 0) filled++; });
+      const progress = items.length ? Math.round((filled/items.length)*100) : 0;
+      
+      let color = 'ws-gray';
+      
+      // Reglas estrictas solicitadas:
+      if (progress === 100) {
+          color = 'ws-green'; 
+      } else if (timeStatus === 'LOCKED_PAST') {
+          color = 'ws-red'; // Vencido y no completado
+      } else if (timeStatus === 'LOCKED_FUTURE') {
+          color = 'ws-gray';
+      } else if (timeStatus === 'OPEN') {
+          if (progress === 0) color = 'ws-red';
+          else {
+              if (timeLeftHours < 24) color = 'ws-orange';
+              else color = 'ws-blue';
+          }
+      }
+      
+      return { status: timeStatus, progress: progress, color: color, total: items.length, filled: filled };
+  }
+
+  // --- TEMPLATE SYSTEM (NEW) ---
+  function getTemplate(type, course, week) {
+     const profName = course.professor.split(' ')[0]; // Primer nombre
+     const weekNum = week.replace('S', '');
+     
+     // Helper para título propio (Title Case)
+     const toTitleCase = (str) => {
+        return str.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase());
+     };
+     
+     // El usuario especificó que Grado es la col B, que mapeamos a course.grade
+     const gradoRaw = course.grade || 'Coordinación Académica';
+     const grado = toTitleCase(gradoRaw);
+
+     if (type === 'CONGRATULATE') {
+         return {
+             subject: `Mención de desempeño destacado y cumplimiento de estándares - ${course.courseName}. Semana ${weekNum}`,
+             body: `Estimado/a Docente ${course.professor}:<br><br>` +
+                   `Mediante la presente, brindamos el reconocimiento debido por la labor docente realizada durante la semana <b>${weekNum}</b> en la asignatura <b>${course.courseName}</b>.<br><br>` + 
+                   `Tras la revisión de los indicadores de desempeño, nos complace validar que su gestión ha cumplido satisfactoriamente con los estándares académicos establecidos. Su rigor y compromiso son vitales para garantizar la excelencia en la calidad del servicio educativo que ofrecemos.<br><br>` +
+                   `Le exhortamos a mantener esta línea de trabajo, consolidando así el prestigio de nuestra institución y el aprendizaje de los estudiantes.<br><br>` +
+                   `Atentamente,<br><br>` +
+                   `<b>Área de ${grado}</b><br>` +
+                   `<b>USMP Virtual.</b>`
+         };
+     } else if (type === 'REPORT') {
+         // Identificar pendientes (calificaciones 1 o 2)
+         const pending = CRITERIA_MAP
+             .filter(x => {
+                 if (x.week !== week) return false;
+                 const val = parseInt(course.grades[x.id] || 0);
+                 return (val === 1 || val === 2);
+             })
+             .map(x => `<li>${x.label}</li>`)
+             .join('');
+             
+         return {
+             subject: `Notificación de Incumplimiento o cumplimiento parcial de sus funciones como docente - USMP Virtual`,
+             body: `Estimado/a ${course.professor}:<br><br>` + 
+                   `Por medio de la presente, le comunicamos los resultados de la supervisión realizada a su desempeño docente durante la semana <b>${weekNum}</b> en la asignatura <b>${course.courseName}</b>.<br><br>` +
+                   `Y le informamos que se ha detectado el incumplimiento de los criterios de calidad establecidos por la normativa de nuestra casa de estudios.<br><br>` +
+                   `<ul>${pending || '<li>Sin observaciones registradas</li>'}</ul><br>` +
+                   `Esta situación afecta directamente el desarrollo del servicio educativo y contraviene las disposiciones académicas vigentes.<br><br>` +
+                   `Le instamos a subsanar las observaciones detectadas de manera inmediata y a alinear estrictamente su gestión con los estándares institucionales.<br><br>` + 
+                   `Quedamos a la espera de su pronta regularización.<br><br>` +
+                   `Atentamente,<br><br>` +
+                   `<b>Área de ${grado}</b><br>` +
+                   `<b>USMP Virtual</b>`
+         };
+     }
+     return { subject: '', body: '' };
+  }
+
+  // --- MAIN ---
+  function loadModule(key) {
+    document.getElementById('home-view').classList.add('hidden');
+    document.getElementById('module-view').classList.remove('hidden');
+    document.getElementById('module-view').style.display='flex';
+    
+    google.script.run
+    .withSuccessHandler(d => {
+         if (d && d.role === 'ERROR') {
+             alert("Error Backend: " + d.message);
+             document.getElementById('spinner-box').innerHTML = `<p class="text-red-600 font-bold">${d.message}</p>`;
+             return;
+         }
+         if (!d || !d.courses) {
+             alert("Error: No se recibieron datos.");
+             return;
+         }
+
+         document.getElementById('spinner-box').classList.add('hidden');
+         document.getElementById('main-content').classList.remove('hidden');
+         document.getElementById('user-email').innerText = d.userEmail;
+         globalData = d;
+         toggleView('OVERVIEW');
+    })
+    .withFailureHandler(e => {
+        alert("Error de Conexión: " + e);
+        document.getElementById('spinner-box').innerHTML = `<p class="text-red-600 font-bold">Error de Conexión: ${e}</p>`;
+    })
+    .getInitialData(key);
+  }
+  
+  function toggleView(view) {
+     const overview = document.getElementById('overview-panel');
+     const detail = document.getElementById('detail-panel');
+     
+     if(view === 'OVERVIEW') {
+        detail.classList.add('hidden');
+        overview.classList.remove('hidden');
+        renderOverview();
+     } else {
+        overview.classList.add('hidden');
+        detail.classList.remove('hidden');
+     }
+  }
+
+  function goHome() {
+     document.getElementById('module-view').classList.add('hidden');
+     document.getElementById('home-view').classList.remove('hidden');
+     globalData=null; currentCourse=null;
+     document.getElementById('spinner-box').classList.remove('hidden');
+     document.getElementById('main-content').classList.add('hidden');
+  }
+
+  function getCourseVigesimal(course) {
+      // Calcular promedio real de notas (1-4) y convertir a vigesimal (x5)
+      let total = 0;
+      let count = 0;
+      
+      // Iterar sobre todos los criterios posibles
+      CRITERIA_MAP.forEach(item => {
+          const val = parseInt(course.grades[item.id] || 0);
+          if (val > 0) {
+              total += val;
+              count++;
+          }
+      });
+      
+      if (count === 0) return 0;
+      const avg4 = total / count;
+      return (avg4 * 5).toFixed(2); // 4 * 5 = 20
+  }
+
+  function renderDashboardStats(courses) {
+      // 1. Totales
+      const totalCourses = courses.length;
+      const totalStudents = courses.reduce((acc, c) => acc + (parseInt(c.studentsCount)||0), 0);
+      
+      // 2. Promedio Total Vigesimal
+      let sumDef = 0;
+      let countDef = 0;
+      courses.forEach(c => {
+          const v = parseFloat(getCourseVigesimal(c));
+          if (v > 0) {
+              sumDef += v;
+              countDef++;
+          }
+      });
+      const globalAvg = countDef ? (sumDef / countDef).toFixed(2) : '0.00';
+      
+      // 3. Progreso Semanal (Promedio de % de avance)
+        const weeks = ['S1', 'S2', 'S3', 'S4'];
+        let weekHTML = '';
+        
+        weeks.forEach(w => {
+            let sumProg = 0;
+            courses.forEach(c => {
+                const s = getWeekStats(c.startDate, w, c.grades);
+                sumProg += s.progress;
+            });
+            const avgProg = Math.round(sumProg / Math.max(totalCourses, 1));
+            
+            // Color barra semanal
+            let barColor = 'bg-blue-500';
+            if(avgProg >= 100) barColor = 'bg-green-500';
+            else if(avgProg < 30) barColor = 'bg-red-500';
+            
+            weekHTML += `
+                <div class="flex flex-col gap-1 w-full">
+                    <div class="flex justify-between text-[10px] items-end">
+                        <span class="font-bold text-gray-500">Semana ${w.replace('S','')}</span>
+                        <span class="font-bold text-gray-700">${avgProg}%</span>
+                    </div>
+                    <div class="h-1.5 w-full bg-gray-200 rounded-full overflow-hidden">
+                        <div class="h-full ${barColor}" style="width: ${avgProg}%"></div>
+                    </div>
+                </div>
+            `;
+        });
+
+      // Render Dashboard Header
+      const header = document.getElementById('dashboard-stats-header');
+      if(header) {
+          header.innerHTML = `
+             <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                 <!-- Card 1: Asignaturas -->
+                 <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between">
+                     <div>
+                         <p class="text-xs text-gray-500 uppercase font-bold tracking-wider">Asignaturas</p>
+                         <h3 class="text-2xl font-bold text-gray-800">${totalCourses}</h3>
+                     </div>
+                     <div class="p-3 bg-blue-50 rounded-lg text-blue-600">
+                         <i class="fa-solid fa-book text-xl"></i>
+                     </div>
+                 </div>
+                 
+                 <!-- Card 2: Alumnos -->
+                 <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between">
+                     <div>
+                         <p class="text-xs text-gray-500 uppercase font-bold tracking-wider">Total Alumnos</p>
+                         <h3 class="text-2xl font-bold text-gray-800">${totalStudents}</h3>
+                     </div>
+                     <div class="p-3 bg-indigo-50 rounded-lg text-indigo-600">
+                         <i class="fa-solid fa-users text-xl"></i>
+                     </div>
+                 </div>
+
+                 <!-- Card 3: Promedio Global -->
+                 <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between">
+                     <div>
+                         <p class="text-xs text-gray-500 uppercase font-bold tracking-wider">Promedio Global</p>
+                         <h3 class="text-2xl font-bold ${parseFloat(globalAvg)>=14?'text-green-600':parseFloat(globalAvg)>=10.5?'text-yellow-600':'text-red-600'}">${globalAvg}</h3>
+                     </div>
+                     <div class="p-3 bg-green-50 rounded-lg text-green-600">
+                         <i class="fa-solid fa-chart-line text-xl"></i>
+                     </div>
+                 </div>
+
+                 <!-- Card 4: Avance Semanal -->
+                 <div class="bg-white p-3 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-center gap-2">
+                     ${weekHTML}
+                 </div>
+             </div>
+          `;
+      }
+  }
+
+  function renderOverview() {
+     const container = document.getElementById('overview-list');
+     container.innerHTML = '';
+     
+     const term = document.getElementById('search-input').value.toLowerCase();
+     const filtered = globalData.courses.filter(c => c.courseName.toLowerCase().includes(term) || c.professor.toLowerCase().includes(term));
+     const countEl = document.getElementById('overview-count');
+     if(countEl) countEl.innerText = filtered.length + ' ASIGNATURAS';
+     const countSidebar = document.getElementById('course-count');
+     if(countSidebar) countSidebar.innerText = filtered.length + ' ASIGNATURAS';
+     
+     // Render Header Stats based on FILTERED data (or global? strict requirement says summary of assignments... usually implies global, but consistent UI matches filter)
+     // Let's use GLOBAL for the top stats to give a big picture, or filtered? 
+     // Requirement: "un resumen de las cantidades de asignaturas, cantidad de asigaturas asignadas..."
+     // Usually dashboard headers show total status. Let's use globalData.courses for stats unless filtering is active?
+     // Let's stick to globalData.courses for the main dashboard stats to render them once or always based on all data.
+     // Actually, if I filter, I might want to see stats for that professor. 
+     // Let's pass 'filtered' to renderDashboardStats so it updates dynamically!
+     renderDashboardStats(filtered);
+     
+     filtered.forEach(c => {
+        const row = document.createElement('div');
+        row.className = "bg-white p-4 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow cursor-pointer group flex flex-col md:flex-row items-center gap-4 relative";
+        row.onclick = (e) => {
+           if(e.target.tagName === 'A' || e.target.closest('a')) return;
+           selectCourse(c);
+        };
+
+        let totalProgress = 0;
+        let weekHTML = '';
+         const COLOR_MAP = {
+          'ws-gray': 'bg-gray-200',
+          'ws-green': 'bg-green-500',
+          'ws-blue': 'bg-blue-500',
+          'ws-orange': 'bg-orange-500',
+          'ws-red': 'bg-red-500'
+        };
+
+        ['S1','S2','S3','S4'].forEach(w => {
+            const s = getWeekStats(c.startDate, w, c.grades);
+            totalProgress += s.progress;
+            
+            const colorClass = COLOR_MAP[s.color] || 'bg-gray-200';
+            
+            weekHTML += `
+               <div class="flex flex-col items-center gap-1 w-8">
+                  <div class="text-[9px] text-gray-400 font-bold uppercase">${w}</div>
+                  <div class="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden" title="${s.progress}%">
+                     <div class="h-full ${colorClass}" style="width: ${s.progress}%"></div>
+                  </div>
+               </div>
+            `;
+        });
+        
+        // VIGESIMAL CALCULATION
+        const avgScore = getCourseVigesimal(c);
+        const scoreVal = parseFloat(avgScore);
+        // Colores: 0-10.49 Rojo, 10.5-13.99 Ambar, 14-20 Verde (Estándar académico)
+        // O simple: <11 Rojo, <14 Ambar, >=14 Verde
+        const scoreColor = scoreVal>=14?'text-green-600':scoreVal>=10.5?'text-yellow-600':'text-red-600';
+        
+        row.innerHTML = `
+           <div class="flex-1 min-w-0">
+              <h3 class="font-bold text-gray-800 text-sm group-hover:text-red-700 transition-colors truncate mb-0.5">${c.courseName}</h3>
+              <p class="text-xs text-gray-500 font-medium truncate"><i class="fa-regular fa-user mr-1"></i> ${c.professor}</p>
+           </div>
+           
+           <div class="flex items-center gap-3 border-l border-r border-gray-100 px-4">
+               ${weekHTML}
+           </div>
+
+           <div class="text-center min-w-[60px]">
+              <div class="text-xl font-bold ${scoreColor}">${avgScore}</div>
+              <div class="text-[9px] text-gray-400 uppercase font-bold">Prom.</div>
+           </div>
+           
+           <div class="flex gap-2">
+              <a href="${c.urlAP || '#'}" target="_blank" class="${c.urlAP?'':'opacity-50 pointer-events-none'} text-xs bg-blue-50 text-blue-600 px-2 py-1.5 rounded font-bold hover:bg-blue-100 transition-colors" title="Aula Virtual AP"><i class="fa-solid fa-globe"></i></a>
+              <a href="${c.urlUSMP || '#'}" target="_blank" class="${c.urlUSMP?'':'opacity-50 pointer-events-none'} text-xs bg-red-50 text-red-600 px-2 py-1.5 rounded font-bold hover:bg-red-100 transition-colors" title="Aula Virtual USMP"><i class="fa-solid fa-university"></i></a>
+              <button class="text-xs font-bold text-gray-400 group-hover:text-gray-600 px-2 py-1.5 hover:bg-gray-100 rounded transition-colors"><i class="fa-solid fa-chevron-right"></i></button>
+           </div>
+        `;
+        container.appendChild(row);
+     });
+  }
+
+  function selectCourse(c) {
+     currentCourse = c;
+     toggleView('DETAIL');
+     
+     document.getElementById('detail-course-name').innerText = c.courseName;
+     document.getElementById('detail-professor').innerText = c.professor;
+     document.getElementById('detail-program').innerText = c.program;
+     document.getElementById('detail-students').innerText = c.studentsCount + ' Alumnos';
+     
+     let dateDisplay = '--/--/----';
+     if(c.startDate) {
+        const d = new Date(c.startDate);
+        if(!isNaN(d.getTime())) dateDisplay = d.toLocaleDateString();
+        else dateDisplay = String(c.startDate); 
+     }
+     document.getElementById('detail-start-date').innerText = dateDisplay;
+
+     setupLink('link-ap', c.urlAP, c.codeAP);
+     setupLink('link-usmp', c.urlUSMP, c.codeUSMP);
+     
+     // New Unified Tabs
+     renderUnifiedTabs();
+     // Ensure criteria is rendered for current selection
+     renderCriteria();
+  }
+  
+  function setupLink(id, url, label) {
+     const el = document.getElementById(id);
+     const defaultText = id === 'link-ap' ? 'Aula Virtual AP' : 'Aula Virtual USMP';
+
+     // Validar URL
+     if(url && url.length > 5) {
+        el.href = url;
+        el.classList.remove('hidden', 'opacity-50', 'pointer-events-none');
+        el.classList.add('flex');
+     } else {
+        el.href='#';
+        el.classList.add('opacity-50', 'pointer-events-none');
+     }
+     
+     // Construir contenido HTML
+     let iconClass = "fa-solid fa-globe mr-2 mt-0.5 text-gray-400 group-hover:";
+     iconClass += (id === 'link-ap') ? 'text-blue-500' : 'text-red-500';
+
+     let content = '';
+     if (label && label.length > 3) {
+         // Con código
+         content = `
+            <div class="flex items-start text-left w-full overflow-hidden">
+                <i class="${iconClass}"></i>
+                <div class="flex flex-col min-w-0">
+                    <span class="font-bold text-xs leading-none mb-0.5">${defaultText}</span>
+                    <span class="text-[10px] text-gray-500 font-mono truncate" title="${label}">${label}</span>
+                </div>
+            </div>
+            <i class="fa-solid fa-arrow-up-right-from-square text-[10px] opacity-0 group-hover:opacity-100 ml-2"></i>
+         `;
+     } else {
+         // Sin código (solo texto default)
+         content = `
+            <div class="flex items-center">
+                <i class="${iconClass}"></i>
+                <span class="font-medium truncate">${defaultText}</span>
+            </div>
+            <i class="fa-solid fa-arrow-up-right-from-square text-[10px] opacity-0 group-hover:opacity-100 ml-2"></i>
+         `;
+     }
+     el.innerHTML = content;
+  }
+
+  function renderUnifiedTabs() {
+     const con = document.getElementById('week-status-container');
+     con.innerHTML = '';
+     
+     ['S1','S2','S3','S4'].forEach(w => {
+         const stats = getWeekStats(currentCourse.startDate, w, currentCourse.grades);
+         const weekNum = w.replace('S','');
+         const isActive = (currentWeekId === w);
+         
+         const btn = document.createElement('button');
+         // Estilo base
+         let cls = "flex items-center gap-2 px-3 py-2 rounded-lg transition-all border ";
+         
+         if (isActive) {
+             cls += "bg-white border-blue-200 shadow-sm ring-1 ring-blue-100";
+         } else {
+             // Eliminamos grayscale para que el color se vea siempre
+             cls += "bg-transparent border-transparent hover:bg-gray-50 text-gray-400 hover:text-gray-600";
+         }
+         
+         btn.className = cls;
+         
+         // Cuadrado de color (Semaforo)
+         const colorClass = stats.color.replace('ws-', 'bg-');
+         const colorTailwind = colorClass === 'bg-gray' ? 'bg-gray-300' : 
+                               colorClass === 'bg-green' ? 'bg-green-500' :
+                               colorClass === 'bg-blue' ? 'bg-blue-500' :
+                               colorClass === 'bg-orange' ? 'bg-orange-500' : 
+                               colorClass === 'bg-red' ? 'bg-red-500' : 'bg-gray-300';
+
+         btn.innerHTML = `
+            <div class="w-4 h-4 rounded ${colorTailwind} shadow-sm"></div>
+            <span class="text-xs font-bold ${isActive ? 'text-gray-700' : 'text-gray-500'}">Semana ${weekNum}</span>
+         `;
+         
+         btn.onclick = () => {
+             currentWeekId = w;
+             renderUnifiedTabs();
+             renderCriteria();
+         };
+         
+         con.appendChild(btn);
+     });
+  }
+
+  /* function renderTabs() REMOVED */
+
+  function renderCriteria() {
+     const parent = document.getElementById('criteria-container');
+     parent.innerHTML = '';
+     const stats = getWeekStats(currentCourse.startDate, currentWeekId, currentCourse.grades);
+     const isLocked = (stats.status !== 'OPEN');
+
+     if(isLocked) {
+         const txt = stats.status==='LOCKED_FUTURE' ? 'Semana no iniciada.' : 'Semana finalizada.';
+         parent.innerHTML = `<div class="bg-gray-100 p-3 rounded text-center text-xs text-gray-500 mb-4 font-bold"><i class="fa-solid fa-lock mr-1"></i> ${txt} (Solo Lectura)</div>`;
+     }
+
+     document.getElementById('week-progress-bar').style.width = stats.progress + '%';
+     document.getElementById('week-progress-text').innerText = stats.progress + '%';
+
+     const items = CRITERIA_MAP.filter(x => x.week === currentWeekId);
+     const groups = {};
+     items.forEach(i => { if(!groups[i.dim]) groups[i.dim]=[]; groups[i.dim].push(i); });
+     
+     for(const [dim, list] of Object.entries(groups)) {
+         const box = document.createElement('div');
+         box.className = "bg-white border boundary-gray-200 rounded-lg overflow-hidden";
+         box.innerHTML = `<div class="bg-gray-50 px-4 py-2 text-[10px] font-bold text-gray-500 uppercase tracking-wider">${dim}</div>`;
+         const body = document.createElement('div');
+         body.className="divide-y divide-gray-100";
+         list.forEach(c => {
+             const val = parseInt(currentCourse.grades[c.id] || 0);
+             let light = 'tl-gray';
+             if(val>0) light = (val<=2) ? 'tl-red' : 'tl-green';
+             
+             let btns = '';
+             [1,2,3,4].forEach(n => {
+                const active = (val==n);
+                const cls = active ? (n<=2?'bg-red-500 text-white border-red-500':'bg-green-500 text-white border-green-500') : 'bg-white text-gray-400 border-gray-200 hover:border-gray-300';
+                const click = isLocked ? '' : `onclick="save('${c.id}',${n},this)"`;
+                btns += `<button ${click} class="w-7 h-7 rounded text-xs font-bold border ${cls}">${n}</button>`;
+             });
+
+             const row = document.createElement('div');
+             row.className = "p-3 flex items-center justify-between hover:bg-gray-50 transition-colors";
+             row.innerHTML = `
+                <div class="flex items-center gap-3">
+                   <div class="traffic-light ${light} mt-0.5" id="tl-${c.id}"></div>
+                   <span class="text-xs font-bold text-gray-700">${c.label}</span>
+                </div>
+                <div class="flex gap-1">${btns}</div>
+             `;
+             body.appendChild(row);
+         });
+         box.appendChild(body);
+         parent.appendChild(box);
+     }
+     
+     // Analytics Btns
+     const btnCongrat = document.getElementById('btn-congratulate');
+     const btnReport = document.getElementById('btn-report');
+     let low=0;
+     items.forEach(i => { const v=currentCourse.grades[i.id]; if(v==1||v==2) low++; });
+     
+     if(btnCongrat) btnCongrat.disabled = !(stats.progress===100 && low===0);
+     if(btnReport) btnReport.disabled = !(low>0);
+  }
+
+  function save(id, val, btn) {
+      const sibs = btn.parentElement.children;
+      for(let s of sibs) s.className = "w-7 h-7 rounded text-xs font-bold border bg-white text-gray-400 border-gray-200";
+      btn.className = "w-7 h-7 rounded text-xs font-bold border " + (val<=2?'bg-red-500 text-white border-red-500':'bg-green-500 text-white border-green-500');
+      document.getElementById(`tl-${id}`).className = "traffic-light " + (val<=2?'tl-red':'tl-green');
+      
+      google.script.run.withSuccessHandler(res=>{
+           currentCourse.grades[id] = val;
+           currentCourse.timestamps[id] = res.timestamp;
+           const stats = getWeekStats(currentCourse.startDate, currentWeekId, currentCourse.grades);
+           document.getElementById('week-progress-bar').style.width = stats.progress + '%';
+           document.getElementById('week-progress-text').innerText = stats.progress + '%';
+           renderUnifiedTabs();
+      }).saveGrade(currentCourse.rowIndex, id, val, currentWeekId, currentModule);
+  }
+  
+  function openEmailModal(t){ 
+      document.getElementById('email-modal').classList.remove('hidden'); 
+      document.getElementById('email-to').value = currentCourse.email1; 
+      
+      const tpl = getTemplate(t, currentCourse, currentWeekId);
+      document.getElementById('email-subject').value = tpl.subject;
+      document.getElementById('email-body').innerHTML = tpl.body;
+  }
+
+  function closeEmailModal(){ document.getElementById('email-modal').classList.add('hidden'); }
+  
+  function sendEmailFromModal(){ 
+      google.script.run.withSuccessHandler(()=>closeEmailModal()).sendTeacherEmail(
+          document.getElementById('email-to').value, 
+          document.getElementById('email-subject').value, 
+          document.getElementById('email-body').innerText
+      ); 
+  }
+
+  function sendWhatsApp() {
+     // Lógica visual por ahora, ya que requiere API externa o enlace web
+     const phone = currentCourse.phoneNumber || '';
+     const msg = encodeURIComponent(document.getElementById('email-body').innerText);
+     if(phone) window.open(`https://wa.me/${phone.replace(/[^0-9]/g,'')}?text=${msg}`, '_blank');
+     else alert('El docente no tiene número registrado.');
+  }
+</script>

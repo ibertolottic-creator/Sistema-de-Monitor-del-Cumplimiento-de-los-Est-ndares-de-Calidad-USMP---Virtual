@@ -1,0 +1,413 @@
+/**
+ * SISTEMA DE GESTIÓN DEL APRENDIZAJE (LMS) - MULTI-MODULO
+ * Backend: Versión ULTIMATE (Robusta, Auditoría y Concurrencia)
+ */
+
+const SHEET_MAP = {
+  'VIRTUAL': "Sistema de gestión del aprendizaje (LMS)- virtual",
+  'PRESENCIAL': "Sistema de gestión del aprendizaje (LMS)- presencial"
+};
+
+const ADMIN_EMAIL = Session.getActiveUser().getEmail(); 
+const ADDITIONAL_ADMINS = ["admin2@usmp.pe", "jefe@usmp.pe"]; 
+
+function doGet() {
+  return HtmlService.createTemplateFromFile('Index')
+      .evaluate()
+      .setTitle('Monitor de Calidad - USMP')
+      .addMetaTag('viewport', 'width=device-width, initial-scale=1')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+function include(filename) {
+  return HtmlService.createHtmlOutputFromFile(filename).getContent();
+}
+
+// --- OBTENER DATOS (Módulo Dinámico) ---
+function getInitialData(moduleKey) {
+  try {
+    const sheetName = SHEET_MAP[moduleKey];
+    if (!sheetName) return { role: 'ERROR', message: "Módulo no válido: " + moduleKey };
+
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(sheetName);
+    
+    if (!sheet) return { role: 'ERROR', message: "No se encontró la hoja: " + sheetName };
+
+    const lastRow = sheet.getLastRow();
+    const lastCol = sheet.getLastColumn();
+    if (lastRow < 3) return { role: 'ERROR', message: 'La hoja está vacía.' };
+
+    // Leer valores
+    const allValues = sheet.getRange(1, 1, lastRow, lastCol).getValues();
+    // Leer enlaces (L=12, M=13) con manejo de error
+    let urlRichText = [];
+    try {
+      // Columnas L y M son índices 12 y 13 (1-based en hoja) -> wait, getRange(row, col)
+      // indices de arreglo 0-based: L=11, M=12. 
+      // getRange(1, 12, lastRow, 2) -> Col 12 (L) y 13 (M)
+      urlRichText = sheet.getRange(1, 12, lastRow, 2).getRichTextValues();
+    } catch(e) {
+      Logger.log("Error leyendo RichText: " + e);
+    }
+    
+    const idsRow = allValues[0];      
+    
+    const userEmail = Session.getActiveUser().getEmail();
+    let role = 'COORDINATOR';
+    if (userEmail === ADMIN_EMAIL || ADDITIONAL_ADMINS.includes(userEmail)) {
+      role = 'ADMIN';
+    }
+
+    const courses = [];
+    let totalCoursesCount = 0;
+
+    // Procesar filas (Fila 3 en adelante)
+    for (let i = 2; i < allValues.length; i++) {
+        try {
+            const row = allValues[i];
+            if (!row[4]) continue; // Saltar filas sin nombre de curso
+            
+            totalCoursesCount++; 
+            
+            const coordEmail = String(row[18] || '').trim(); // Col S
+            
+            // Filtro de seguridad
+            if (role !== 'ADMIN') {
+               if (coordEmail.toLowerCase() !== userEmail.toLowerCase()) continue; 
+            }
+    
+            let startDateStr = "";
+            if (row[19] instanceof Date) {
+              startDateStr = row[19].toISOString();
+            } else {
+              startDateStr = String(row[19]); 
+            }
+    
+            const grades = {};
+            const timestamps = {};
+            
+            // Notas (Desde U=20)
+            for (let c = 20; c < idsRow.length; c++) {
+              const id = idsRow[c];
+              if (!id) continue;
+              const cellValue = row[c];
+              
+              if (String(id).endsWith('_ts')) {
+                if (cellValue instanceof Date) timestamps[id.replace('_ts', '')] = cellValue.toISOString();
+                else timestamps[id.replace('_ts', '')] = String(cellValue);
+              } else {
+                grades[id] = cellValue;
+              }
+            }
+            
+            // Link Extraction
+            let codeAP='', urlAP='', codeUSMP='', urlUSMP='';
+        
+        try {
+           if (urlRichText && urlRichText.length > i) {
+              const rowRich = urlRichText[i]; // rowRich[0] is col L, rowRich[1] is col M
+              
+              const cellL = rowRich[0]; 
+              const cellM = rowRich[1];
+              
+              if (cellL) {
+                 codeAP = cellL.getText() || '';
+                 urlAP = cellL.getLinkUrl() || '';
+                 if(!urlAP && codeAP.startsWith('http')) urlAP = codeAP;
+              }
+              
+              if (cellM) {
+                 codeUSMP = cellM.getText() || '';
+                 urlUSMP = cellM.getLinkUrl() || '';
+                 if(!urlUSMP && codeUSMP.startsWith('http')) urlUSMP = codeUSMP;
+              }
+           }
+        } catch(e) { console.warn("Link error row " + i, e); }
+
+        // Correos Docente (H=7, I=8)
+        const email1 = String(row[7] || '').trim();
+        const email2 = String(row[8] || '').trim();
+
+        courses.push({
+          rowIndex: i + 1,
+          grade: String(row[1] || ''), 
+          program: String(row[2] || ''),      
+          courseName: String(row[4] || ''),   
+          professor: String(row[6] || ''),
+          email1: email1,
+          email2: email2,
+          phoneNumber: String(row[9] || '').trim(), 
+          coordinator: coordEmail,
+          
+          codeAP: codeAP, urlAP: urlAP,
+          codeUSMP: codeUSMP, urlUSMP: urlUSMP,
+          
+          studentsCount: String(row[14] || '0'), 
+          startDate: startDateStr,
+          grades: grades,
+          timestamps: timestamps
+        });
+      } catch (errRow) {
+        Logger.log("Error en fila " + (i+1) + ": " + errRow);
+        // Continuamos con la siguiente fila, no detenemos todo
+      }
+    }
+
+    return { role: role, userEmail: userEmail, courses: courses, totalCourses: totalCoursesCount };
+
+  } catch (e) {
+    return { role: 'ERROR', message: 'Error Crítico Backend: ' + e.toString() };
+  }
+}
+
+// --- GUARDAR (Con LockService) ---
+function saveGrade(rowIndex, criteriaId, value, weekKey, moduleKey) {
+  const lock = LockService.getScriptLock();
+  try {
+    // Esperar hasta 10 segundos por el lock (para concurrencia)
+    lock.waitLock(10000); 
+
+    const sheetName = SHEET_MAP[moduleKey];
+    if (!sheetName) throw new Error("Módulo inválido");
+
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+    const idsRow = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    
+    // Modificación Robusta: Búsqueda flexible de ID
+    const colIndexGrade = idsRow.findIndex(h => String(h).trim().toLowerCase() === String(criteriaId).trim().toLowerCase());
+    const colIndexTs = idsRow.findIndex(h => String(h).trim().toLowerCase() === String(criteriaId + '_ts').trim().toLowerCase());
+    
+    if (colIndexGrade === -1) {
+       console.error("ID '" + criteriaId + "' no encontrado. IDs disponibles: " + JSON.stringify(idsRow.slice(0, 5) + "..."));
+       throw new Error("ID '" + criteriaId + "' no encontrado en hoja '" + sheetName + "'");
+    }
+    
+    // Detectar Update
+    const currentCell = sheet.getRange(rowIndex, colIndexGrade + 1);
+    const currentValue = currentCell.getValue();
+    const isUpdate = (currentValue !== "" && currentValue !== null);
+
+    const timestamp = new Date();
+    currentCell.setValue(value);
+    if (colIndexTs !== -1) sheet.getRange(rowIndex, colIndexTs + 1).setValue(timestamp);
+    
+    // Auditoría de tiempos
+    if (weekKey) analyzeRapidFill(sheet, rowIndex, weekKey, idsRow, isUpdate);
+    
+    return { success: true, timestamp: timestamp.toISOString() };
+  } catch (e) {
+    throw new Error(e.toString());
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// --- AUDITORÍA DE TIEMPOS (Helper interno) ---
+function analyzeRapidFill(sheet, rowIndex, weekKey, idsRow, isUpdate) {
+  try {
+    const targetWeek = (weekKey === 'Pre') ? 'S1' : weekKey;
+    // Mapeo nombres de encabezado (CSV)
+    const reportMap = {
+      'S1': { time: 'audit_time_s1', b5: 'audit_burst5_s1', b4: 'audit_burst4_s1' }, 
+      'S2': { time: 'audit_time_s2', b5: 'audit_burst5_s2', b4: 'audit_burst4_s2' }, 
+      'S3': { time: 'audit_time_s3', b5: 'audit_burst5_s3', b4: 'audit_burst4_s3' }, 
+      'S4': { time: 'audit_time_s4', b5: 'audit_burst5_s4', b4: 'audit_burst4_s4' }  
+    };
+    const configNames = reportMap[targetWeek];
+    if (!configNames) return; 
+
+    // Buscar índices dinámicamente
+    const idxTime = idsRow.findIndex(h => String(h).trim() === configNames.time);
+    const idxB5 = idsRow.findIndex(h => String(h).trim() === configNames.b5);
+    const idxB4 = idsRow.findIndex(h => String(h).trim() === configNames.b4);
+
+    if (idxTime === -1) return; // Si no existen las columnas de auditoría, salir.
+
+    // Buscar timestamps de la semana
+    const relevantTimestamps = [];
+    idsRow.forEach((id, index) => {
+      if (!id || !id.toString().endsWith('_ts')) return;
+      let belongs = false;
+      // Lógica de pertenencia basada en IDs del CSV (c_X_Y_week_ts)
+      if (targetWeek === 'S1' && (id.includes('_pre') || id.includes('_s1') || id.includes('_b'))) belongs = true;
+      else if (targetWeek === 'S2' && id.includes('_s2')) belongs = true;
+      else if (targetWeek === 'S3' && id.includes('_s3')) belongs = true;
+      else if (targetWeek === 'S4' && id.includes('_s4')) belongs = true;
+      if (belongs) relevantTimestamps.push(index + 1);
+    });
+
+    if (relevantTimestamps.length === 0) return;
+
+    // Leer datos
+    const startColData = 21; 
+    const numCols = sheet.getLastColumn() - startColData + 1;
+    if (numCols < 1) return;
+
+    const rowValues = sheet.getRange(rowIndex, startColData, 1, numCols).getValues()[0];
+    
+    const dates = [];
+    relevantTimestamps.forEach(colIndex => {
+      const arrayIndex = colIndex - startColData; 
+      if (arrayIndex >= 0 && arrayIndex < rowValues.length) {
+        const val = rowValues[arrayIndex];
+        if (val instanceof Date) dates.push(val.getTime());
+      }
+    });
+    dates.sort((a, b) => a - b); 
+
+    if (dates.length < 2) return; 
+
+    // Regla 1: Tiempo Total (1ra vez)
+    if (dates.length >= (relevantTimestamps.length * 0.8)) { 
+       const cellTime = sheet.getRange(rowIndex, idxTime + 1);
+       if (cellTime.getValue() === "") {
+          const totalTimeMs = dates[dates.length - 1] - dates[0];
+          const totalMinutes = (totalTimeMs / 60000).toFixed(2);
+          cellTime.setValue(totalMinutes + " min");
+       }
+    }
+
+    // Regla 2: Ráfaga Nuevos (<30s, 5 items)
+    if (!isUpdate && dates.length >= 5 && idxB5 !== -1) {
+      let burstDetected = false;
+      for (let i = 0; i <= dates.length - 5; i++) {
+        if ((dates[i+4] - dates[i]) < 30000) { burstDetected = true; break; }
+      }
+      if (burstDetected) sheet.getRange(rowIndex, idxB5 + 1).setValue("DETECTADO (" + new Date().toLocaleTimeString() + ")");
+    }
+
+    // Regla 3: Ráfaga Update (<30s, 4 items)
+    if (isUpdate && dates.length >= 4 && idxB4 !== -1) {
+      let burstDetected = false;
+      const len = dates.length;
+      if ((dates[len-1] - dates[len-4]) < 30000) burstDetected = true;
+      
+      if (burstDetected) sheet.getRange(rowIndex, idxB4 + 1).setValue("DETECTADO (" + new Date().toLocaleTimeString() + ")");
+    }
+  } catch (e) {
+    Logger.log("Audit Error: " + e.toString());
+  }
+}
+
+// --- ANALYTICS CLICKS (Con LockService) ---
+function trackAccess(rowIndex, type, moduleKey) {
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(5000); 
+
+    const sheetName = SHEET_MAP[moduleKey];
+    if (!sheetName) return;
+
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+
+    const userEmail = Session.getActiveUser().getEmail();
+    const isAdmin = (userEmail === ADMIN_EMAIL || ADDITIONAL_ADMINS.includes(userEmail));
+    
+    // Determinar nombre de columna destino
+    let targetHeader = '';
+
+    if (isAdmin) {
+      targetHeader = (type === 'AP') ? 'hits_admin_ap' : 'hits_admin_usmp';
+    } else {
+      const startDateCell = sheet.getRange(rowIndex, 20).getValue(); // Col T (20) sigue siendo fecha? CSV Row 2 col 19. Wait used to be 19. 
+      // CSV: Col 19 = Periodo fecha. Yes. 
+      // Code logic: row[19] is index 19 aka Col 20? No. 
+      // getValues is 0-indexed. Col T is index 19. 
+      // getRange is 1-indexed. Col T is 20.
+      
+      let start = null;
+      if (startDateCell instanceof Date) start = startDateCell;
+      else start = new Date(startDateCell);
+      
+      if (!start || isNaN(start.getTime())) return;
+      
+      const now = new Date();
+      // Ajuste de año si es antiguo
+      if (Math.abs(now - start) / (1000 * 3600 * 24) > 180) start.setFullYear(now.getFullYear());
+
+      const diffDays = Math.floor((now - start) / (1000 * 3600 * 24));
+      
+      let weekLabel = 's1'; 
+      if (diffDays >= 0 && diffDays <= 9) weekLabel = 's1';        
+      else if (diffDays > 9 && diffDays <= 16) weekLabel = 's2';   
+      else if (diffDays > 16 && diffDays <= 23) weekLabel = 's3';  
+      else if (diffDays >= 23) weekLabel = 's4'; 
+      // Post? hits_post_ap
+      else if (diffDays > 30) weekLabel = 'post';
+
+      const typeSuffix = (type === 'AP') ? 'ap' : 'usmp';
+      targetHeader = `hits_${weekLabel}_${typeSuffix}`;
+    }
+    
+    // Buscar columna
+    const targetCol = headers.findIndex(h => String(h).trim() === targetHeader);
+    
+    if (targetCol !== -1) {
+      const cell = sheet.getRange(rowIndex, targetCol + 1);
+      cell.setValue((parseInt(cell.getValue()) || 0) + 1);
+    }
+  } catch (e) {
+    Logger.log("Tracking error: " + e.toString());
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// --- EMAILS ---
+function sendTeacherEmail(toEmails, subject, htmlBody) {
+  try {
+    const recipients = toEmails.split(',').filter(e => e.includes('@')).join(',');
+    if (!recipients) return { success: false, message: "Sin email válido" };
+    MailApp.sendEmail({ to: recipients, subject: subject, htmlBody: htmlBody, name: "Monitor Calidad" });
+    return { success: true };
+  } catch (e) {
+    return { success: false, message: e.toString() };
+  }
+}
+
+// --- TRACKING INTERACCIONES (Email / WhatsApp) (Con LockService) ---
+function trackInteraction(rowIndex, headerName, moduleKey) {
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000); // Wait up to 10s
+
+    const sheetName = SHEET_MAP[moduleKey];
+    if (!sheetName) return { success: false, message: "Módulo desconocido" };
+
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+    
+    // 1. Buscar columna por nombre de encabezado (Fila 1)
+    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    
+    // Búsqueda robusta: ignorar espacios y mayúsculas/minúsculas
+    let colIndex = headers.indexOf(headerName);
+    if (colIndex === -1) {
+      colIndex = headers.findIndex(h => String(h).trim() === headerName.trim());
+    }
+
+    if (colIndex === -1) {
+      return { success: false, message: "Encabezado '" + headerName + "' no encontrado en fila 1." };
+    }
+
+    // 2. Incrementar contador
+    // rowIndex viene del frontend. Aseguramos que sea número válido.
+    const row = parseInt(rowIndex);
+    if (isNaN(row) || row < 1) return { success: false, message: "Fila inválida: " + rowIndex };
+
+    const cell = sheet.getRange(row, colIndex + 1);
+    const val = parseInt(cell.getValue()) || 0;
+    cell.setValue(val + 1);
+
+    return { success: true, newVal: val + 1 };
+  } catch (e) {
+    return { success: false, message: "Error interno: " + e.toString() };
+  } finally {
+    lock.releaseLock();
+  }
+}
+// END OF CODE.GS
+function include(filename) {
+  return HtmlService.createHtmlOutputFromFile(filename).getContent();
+}
