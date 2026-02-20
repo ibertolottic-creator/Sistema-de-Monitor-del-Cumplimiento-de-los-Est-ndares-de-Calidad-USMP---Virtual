@@ -1,0 +1,58 @@
+<script>
+  /**
+   * JS_Templates.html
+   * Maneja la generación de correos dinámicos para Virtual y Presencial.
+   */
+
+  function getTemplate(type, course, week) {
+     const profName = course.professor.split(' ')[0]; // Primer nombre
+     const weekNum = week.replace('S', '');
+     
+     // Helper para título propio (Title Case)
+     const toTitleCase = (str) => {
+        return str.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase());
+     };
+     
+     const gradoRaw = course.grade || 'Coordinación Académica';
+     const grado = toTitleCase(gradoRaw);
+
+     if (type === 'CONGRATULATE') {
+         return {
+             subject: `Mención de desempeño destacado y cumplimiento de estándares - ${course.courseName}. Semana ${weekNum}`,
+             body: `Estimado/a Docente ${course.professor}:<br><br>` +
+                   `Mediante la presente, brindamos el reconocimiento debido por la labor docente realizada durante la semana <b>${weekNum}</b> en la asignatura <b>${course.courseName}</b>.<br><br>` + 
+                   `Tras la revisión de los indicadores de desempeño, nos complace validar que su gestión ha cumplido satisfactoriamente con los estándares académicos establecidos. Su rigor y compromiso son vitales para garantizar la excelencia en la calidad del servicio educativo que ofrecemos.<br><br>` +
+                   `Le exhortamos a mantener esta línea de trabajo, consolidando así el prestigio de nuestra institución y el aprendizaje de los estudiantes.<br><br>` +
+                   `Atentamente,<br><br>` +
+                   `<b>Área de ${grado}</b><br>` +
+                   `<b>USMP Virtual.</b>`
+         };
+     } else if (type === 'REPORT') {
+         // Identificar pendientes (calificaciones 1 o 2)
+         // Usa CURRENT_CRITERIA_MAP definido en JS_Client.html
+         const pending = CURRENT_CRITERIA_MAP
+             .filter(x => {
+                 if (x.week !== week) return false;
+                 const val = parseInt(course.grades[x.id] || 0);
+                 return (val === 1 || val === 2);
+             })
+             .map(x => `<li>${x.label}</li>`)
+             .join('');
+             
+         return {
+             subject: `Notificación de Incumplimiento o cumplimiento parcial de sus funciones como docente - USMP Virtual`,
+             body: `Estimado/a ${course.professor}:<br><br>` + 
+                   `Por medio de la presente, le comunicamos los resultados de la supervisión realizada a su desempeño docente durante la semana <b>${weekNum}</b> en la asignatura <b>${course.courseName}</b>.<br><br>` +
+                   `Y le informamos que se ha detectado el incumplimiento de los criterios de calidad establecidos por la normativa de nuestra casa de estudios.<br><br>` +
+                   `<ul>${pending || '<li>Sin observaciones registradas</li>'}</ul><br>` +
+                   `Esta situación afecta directamente el desarrollo del servicio educativo y contraviene las disposiciones académicas vigentes.<br><br>` +
+                   `Le instamos a subsanar las observaciones detectadas de manera inmediata y a alinear estrictamente su gestión con los estándares institucionales.<br><br>` + 
+                   `Quedamos a la espera de su pronta regularización.<br><br>` +
+                   `Atentamente,<br><br>` +
+                   `<b>Área de ${grado}</b><br>` +
+                   `<b>USMP Virtual</b>`
+         };
+     }
+     return { subject: '', body: '' };
+  }
+</script>

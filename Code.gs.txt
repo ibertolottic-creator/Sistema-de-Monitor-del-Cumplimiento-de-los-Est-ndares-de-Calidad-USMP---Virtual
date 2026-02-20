@@ -12,15 +12,33 @@ const ADMIN_EMAIL = Session.getActiveUser().getEmail();
 const ADDITIONAL_ADMINS = ["admin2@usmp.pe", "jefe@usmp.pe"]; 
 
 function doGet() {
-  return HtmlService.createTemplateFromFile('Index')
-      .evaluate()
-      .setTitle('Monitor de Calidad - USMP')
+  const tpl = HtmlService.createTemplateFromFile('Index');
+  return tpl.evaluate()
+      .setTitle('Sistema de Monitoreo del Cumplimiento de los Estándares de Calidad USMP')
       .addMetaTag('viewport', 'width=device-width, initial-scale=1')
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
-function include(filename) {
-  return HtmlService.createHtmlOutputFromFile(filename).getContent();
+// --- HELPER: Detect Header Row ---
+function getHeaders(sheet) {
+  // Try rows 1 to 5 to find the ID row (contains 'c_1_1' or 'cp_1_1')
+  const lastCol = sheet.getLastColumn();
+  const range = sheet.getRange(1, 1, 5, lastCol).getValues();
+  
+  for (let r = 0; r < range.length; r++) {
+    const row = range[r];
+    // Check for known ID patterns
+    const hasId = row.some(cell => {
+      const s = String(cell).trim();
+      return s.startsWith('c_1_1') || s.startsWith('cp_1_1') || s.startsWith('hits_');
+    });
+    
+    if (hasId) {
+       return { rowIndex: r, values: row }; // rowIndex is 0-based relative to sheet start (0 = Row 1)
+    }
+  }
+  // Fallback to Row 1 (Index 0)
+  return { rowIndex: 0, values: range[0] };
 }
 
 // --- OBTENER DATOS (Módulo Dinámico) ---
@@ -38,20 +56,27 @@ function getInitialData(moduleKey) {
     const lastCol = sheet.getLastColumn();
     if (lastRow < 3) return { role: 'ERROR', message: 'La hoja está vacía.' };
 
-    // Leer valores
+    const headerObj = getHeaders(sheet);
+    const idsRow = headerObj.values;
+    // Data starts after header? Or fixed at Row 3?
+    // CSV says Headers at Row 4. Data likely starts after.
+    // However, existing code processed from I=2 (Row 3).
+    // If header is at Row 4, data must be at Row 5+.
+    
+    // Safety: Start processing from the row AFTER the header row.
+    const startRowIndex = headerObj.rowIndex + 1; 
+    
+    // Leer valores desde la fila de datos
+    // READ ALL from Row 1 to be safe, then map
     const allValues = sheet.getRange(1, 1, lastRow, lastCol).getValues();
-    // Leer enlaces (L=12, M=13) con manejo de error
+    
+    // Leer enlaces (L=12, M=13)
     let urlRichText = [];
     try {
-      // Columnas L y M son índices 12 y 13 (1-based en hoja) -> wait, getRange(row, col)
-      // indices de arreglo 0-based: L=11, M=12. 
-      // getRange(1, 12, lastRow, 2) -> Col 12 (L) y 13 (M)
       urlRichText = sheet.getRange(1, 12, lastRow, 2).getRichTextValues();
     } catch(e) {
       Logger.log("Error leyendo RichText: " + e);
     }
-    
-    const idsRow = allValues[0];      
     
     const userEmail = Session.getActiveUser().getEmail();
     let role = 'COORDINATOR';
@@ -62,8 +87,8 @@ function getInitialData(moduleKey) {
     const courses = [];
     let totalCoursesCount = 0;
 
-    // Procesar filas (Fila 3 en adelante)
-    for (let i = 2; i < allValues.length; i++) {
+    // Iterate starting from row AFTER headers
+    for (let i = startRowIndex; i < allValues.length; i++) {
         try {
             const row = allValues[i];
             if (!row[4]) continue; // Saltar filas sin nombre de curso
@@ -172,11 +197,26 @@ function saveGrade(rowIndex, criteriaId, value, weekKey, moduleKey) {
     if (!sheetName) throw new Error("Módulo inválido");
 
     const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
-    const idsRow = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    const headerObj = getHeaders(sheet);
+    const idsRow = headerObj.values;
     
     // Modificación Robusta: Búsqueda flexible de ID
     const colIndexGrade = idsRow.findIndex(h => String(h).trim().toLowerCase() === String(criteriaId).trim().toLowerCase());
-    const colIndexTs = idsRow.findIndex(h => String(h).trim().toLowerCase() === String(criteriaId + '_ts').trim().toLowerCase());
+    
+    // TIMESTAMP LOGIC FIX:
+    // Presencial headers use 'c_' prefix for timestamps even if criteria is 'cp_'
+    // Example: criteria='cp_1_1_pre' -> timestamp='c_1_1_pre_ts'
+    let tsId = criteriaId + '_ts';
+    if (String(criteriaId).startsWith('cp_')) {
+        // Try precise mapping: replace 'cp_' with 'c_'
+        const altTsId = String(criteriaId).replace('cp_', 'c_') + '_ts';
+        // Check if this alt ID exists in headers
+        if (idsRow.some(h => String(h).trim().toLowerCase() === altTsId.toLowerCase())) {
+            tsId = altTsId;
+        }
+    }
+    
+    const colIndexTs = idsRow.findIndex(h => String(h).trim().toLowerCase() === String(tsId).trim().toLowerCase());
     
     if (colIndexGrade === -1) {
        console.error("ID '" + criteriaId + "' no encontrado. IDs disponibles: " + JSON.stringify(idsRow.slice(0, 5) + "..."));
@@ -190,7 +230,11 @@ function saveGrade(rowIndex, criteriaId, value, weekKey, moduleKey) {
 
     const timestamp = new Date();
     currentCell.setValue(value);
-    if (colIndexTs !== -1) sheet.getRange(rowIndex, colIndexTs + 1).setValue(timestamp);
+    
+    // Save Timestamp if column exists
+    if (colIndexTs !== -1) {
+        sheet.getRange(rowIndex, colIndexTs + 1).setValue(timestamp);
+    }
     
     // Auditoría de tiempos
     if (weekKey) analyzeRapidFill(sheet, rowIndex, weekKey, idsRow, isUpdate);
@@ -229,11 +273,18 @@ function analyzeRapidFill(sheet, rowIndex, weekKey, idsRow, isUpdate) {
     idsRow.forEach((id, index) => {
       if (!id || !id.toString().endsWith('_ts')) return;
       let belongs = false;
-      // Lógica de pertenencia basada en IDs del CSV (c_X_Y_week_ts)
-      if (targetWeek === 'S1' && (id.includes('_pre') || id.includes('_s1') || id.includes('_b'))) belongs = true;
-      else if (targetWeek === 'S2' && id.includes('_s2')) belongs = true;
-      else if (targetWeek === 'S3' && id.includes('_s3')) belongs = true;
-      else if (targetWeek === 'S4' && id.includes('_s4')) belongs = true;
+      const idLower = id.toLowerCase();
+      // Lógica de pertenencia robusta (Virtual c_ y Presencial cp_ o c_ts mixed)
+      
+      // S1: _pre, _s1, _b
+      if (targetWeek === 'S1' && (idLower.includes('_pre') || idLower.includes('_s1') || idLower.includes('_b'))) belongs = true;
+      // S2: _s2
+      else if (targetWeek === 'S2' && idLower.includes('_s2')) belongs = true;
+      // S3: _s3
+      else if (targetWeek === 'S3' && idLower.includes('_s3')) belongs = true;
+      // S4: _s4
+      else if (targetWeek === 'S4' && idLower.includes('_s4')) belongs = true;
+      
       if (belongs) relevantTimestamps.push(index + 1);
     });
 
@@ -300,7 +351,8 @@ function trackAccess(rowIndex, type, moduleKey) {
     if (!sheetName) return;
 
     const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
-    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    const headerObj = getHeaders(sheet);
+    const headers = headerObj.values;
 
     const userEmail = Session.getActiveUser().getEmail();
     const isAdmin = (userEmail === ADMIN_EMAIL || ADDITIONAL_ADMINS.includes(userEmail));
@@ -311,11 +363,17 @@ function trackAccess(rowIndex, type, moduleKey) {
     if (isAdmin) {
       targetHeader = (type === 'AP') ? 'hits_admin_ap' : 'hits_admin_usmp';
     } else {
-      const startDateCell = sheet.getRange(rowIndex, 20).getValue(); // Col T (20) sigue siendo fecha? CSV Row 2 col 19. Wait used to be 19. 
-      // CSV: Col 19 = Periodo fecha. Yes. 
-      // Code logic: row[19] is index 19 aka Col 20? No. 
-      // getValues is 0-indexed. Col T is index 19. 
-      // getRange is 1-indexed. Col T is 20.
+      // Buscar columna "Periodo fecha" dinámicamente
+      const colIndexDate = headers.findIndex(h => String(h).trim().toLowerCase().includes('periodo fecha'));
+      
+      let startDateCell;
+      if (colIndexDate !== -1) {
+          // getRange is 1-based, headers array is 0-based. So colIndex + 1.
+          startDateCell = sheet.getRange(rowIndex, colIndexDate + 1).getValue();
+      } else {
+          // Fallback legacy
+          startDateCell = sheet.getRange(rowIndex, 20).getValue(); 
+      }
       
       let start = null;
       if (startDateCell instanceof Date) start = startDateCell;
@@ -324,18 +382,19 @@ function trackAccess(rowIndex, type, moduleKey) {
       if (!start || isNaN(start.getTime())) return;
       
       const now = new Date();
-      // Ajuste de año si es antiguo
+      // Ajuste de año si es antiguo (para cursos recurrentes o fechas mal configuradas)
       if (Math.abs(now - start) / (1000 * 3600 * 24) > 180) start.setFullYear(now.getFullYear());
 
       const diffDays = Math.floor((now - start) / (1000 * 3600 * 24));
       
       let weekLabel = 's1'; 
-      if (diffDays >= 0 && diffDays <= 9) weekLabel = 's1';        
-      else if (diffDays > 9 && diffDays <= 16) weekLabel = 's2';   
-      else if (diffDays > 16 && diffDays <= 23) weekLabel = 's3';  
-      else if (diffDays >= 23) weekLabel = 's4'; 
+      // Lógica específica para HITS (0-7, 8-14, 15-21, 22-28)
+      if (diffDays >= 0 && diffDays <= 7) weekLabel = 's1';        
+      else if (diffDays > 7 && diffDays <= 14) weekLabel = 's2';   
+      else if (diffDays > 14 && diffDays <= 21) weekLabel = 's3';  
+      else if (diffDays > 21 && diffDays <= 28) weekLabel = 's4'; 
       // Post? hits_post_ap
-      else if (diffDays > 30) weekLabel = 'post';
+      else if (diffDays > 28) weekLabel = 'post';
 
       const typeSuffix = (type === 'AP') ? 'ap' : 'usmp';
       targetHeader = `hits_${weekLabel}_${typeSuffix}`;
@@ -356,16 +415,40 @@ function trackAccess(rowIndex, type, moduleKey) {
 }
 
 // --- EMAILS ---
-function sendTeacherEmail(toEmails, subject, htmlBody) {
-  try {
-    const recipients = toEmails.split(',').filter(e => e.includes('@')).join(',');
-    if (!recipients) return { success: false, message: "Sin email válido" };
-    MailApp.sendEmail({ to: recipients, subject: subject, htmlBody: htmlBody, name: "Monitor Calidad" });
-    return { success: true };
-  } catch (e) {
-    return { success: false, message: e.toString() };
+  function sendTeacherEmail(toEmails, subject, htmlBody) {
+    try {
+      const recipients = toEmails.split(',').filter(e => e.includes('@')).join(',');
+      if (!recipients) return { success: false, message: "Sin email válido" };
+      
+      // Procesar imágenes base64 para convertirlas a inlineImages (cid)
+      // Esto es necesario para que Gmail muestre las imágenes pegadas
+      const inlineImages = {};
+      const imgRegex = /<img[^>]+src="data:image\/([^;]+);base64,([^"]+)"[^>]*>/g;
+      
+      const processedBody = htmlBody.replace(imgRegex, function(match, contentType, base64Data) {
+        const blobId = "img" + Math.random().toString(36).substr(2, 9);
+        const blob = Utilities.newBlob(Utilities.base64Decode(base64Data), contentType, blobId);
+        inlineImages[blobId] = blob;
+        return match.replace(/src="[^"]+"/, 'src="cid:' + blobId + '"');
+      });
+
+      const options = {
+        htmlBody: processedBody,
+        name: "Monitor Calidad"
+      };
+      
+      if (Object.keys(inlineImages).length > 0) {
+        options.inlineImages = inlineImages;
+      }
+
+      // MailApp.sendEmail(recipient, subject, body, options)
+      MailApp.sendEmail(recipients, subject, "Su cliente de correo no soporta HTML.", options);
+      
+      return { success: true };
+    } catch (e) {
+      return { success: false, message: e.toString() };
+    }
   }
-}
 
 // --- TRACKING INTERACCIONES (Email / WhatsApp) (Con LockService) ---
 function trackInteraction(rowIndex, headerName, moduleKey) {
@@ -378,8 +461,8 @@ function trackInteraction(rowIndex, headerName, moduleKey) {
 
     const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
     
-    // 1. Buscar columna por nombre de encabezado (Fila 1)
-    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    // 1. Buscar columna por nombre de encabezado
+    const headers = getHeaders(sheet).values;
     
     // Búsqueda robusta: ignorar espacios y mayúsculas/minúsculas
     let colIndex = headers.indexOf(headerName);

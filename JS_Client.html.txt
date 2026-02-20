@@ -1,5 +1,5 @@
 <script>
-  const CRITERIA_MAP = [
+  const CRITERIA_MAP_VIRTUAL = [
     // 1. Org y gestión
     {id:'c_1_1_pre', label:'1.1 Actualiza OVAs (Antes S1)', dim:'1. Organización y gestión académica virtual', week:'S1'},
     {id:'c_1_2_s1', label:'1.2 Programa Sesiones y Anuncios (S1)', dim:'1. Organización y gestión académica virtual', week:'S1'},
@@ -42,6 +42,53 @@
     {id:'c_7_1_s4', label:'7.1 Conformidad de cierre (S4)', dim:'7. Conformidad y desarrollo de Informes', week:'S4'},
     {id:'c_7_2_s4', label:'7.2 Informe Final (S4)', dim:'7. Conformidad y desarrollo de Informes', week:'S4'}
   ];
+
+  const CRITERIA_MAP_PRESENCIAL = [
+    // 1. Organización
+    {id:'cp_1_1_pre', label:'1.1 Actualiza OVAs (Antes S1)', dim:'1. Organización y gestión', week:'S1'},
+    {id:'cp_1_2_s1', label:'1.2 Programa Sesiones y Anuncios (S1)', dim:'1. Organización y gestión', week:'S1'},
+    // 2. Sesiones
+    {id:'cp_2_1_b', label:'2.1 Realiza Sesión (Bienvenida)', dim:'2. Desarrollo de sesiones (Presencial)', week:'S1'},
+    {id:'cp_2_1_s1', label:'2.1 Realiza Sesión (S1)', dim:'2. Desarrollo de sesiones (Presencial)', week:'S1'},
+    {id:'cp_2_1_s2', label:'2.1 Realiza Sesión (S2)', dim:'2. Desarrollo de sesiones (Presencial)', week:'S2'},
+    {id:'cp_2_1_s3', label:'2.1 Realiza Sesión (S3)', dim:'2. Desarrollo de sesiones (Presencial)', week:'S3'},
+    {id:'cp_2_1_s4', label:'2.1 Realiza Sesión (S4)', dim:'2. Desarrollo de sesiones (Presencial)', week:'S4'},
+    {id:'cp_2_2_b', label:'2.2 Formatos Institucionales (Bienvenida)', dim:'2. Desarrollo de sesiones (Presencial)', week:'S1'},
+    {id:'cp_2_2_s1', label:'2.2 Formatos Institucionales (S1)', dim:'2. Desarrollo de sesiones (Presencial)', week:'S1'},
+    {id:'cp_2_2_s2', label:'2.2 Formatos Institucionales (S2)', dim:'2. Desarrollo de sesiones (Presencial)', week:'S2'},
+    {id:'cp_2_2_s3', label:'2.2 Formatos Institucionales (S3)', dim:'2. Desarrollo de sesiones (Presencial)', week:'S3'},
+    {id:'cp_2_2_s4', label:'2.2 Formatos Institucionales (S4)', dim:'2. Desarrollo de sesiones (Presencial)', week:'S4'},
+    // 3. Evaluaciones
+    {id:'cp_3_1_s1', label:'3.1 Entrega evaluaciones a imprimir (S1)', dim:'3. Evaluaciones', week:'S1'},
+    {id:'cp_3_2_s2', label:'3.2 Realiza y entrega E. Parcial (S2)', dim:'3. Evaluaciones', week:'S2'},
+    {id:'cp_3_3_s4', label:'3.3 Realiza y entrega E. Final (S4)', dim:'3. Evaluaciones', week:'S4'},
+    // 4. Asistencia
+    {id:'cp_4_1_s4', label:'4.1 Registra y comunica inasistencia (S4)', dim:'4. Control de Asistencia', week:'S4'},
+    // 5. Calificación
+    {id:'cp_5_1_s1', label:'5.1 Califica actividades (S1)', dim:'5. Calificación y retroalimentación', week:'S1'},
+    {id:'cp_5_1_s2', label:'5.1 Califica actividades (S2)', dim:'5. Calificación y retroalimentación', week:'S2'},
+    {id:'cp_5_1_s3', label:'5.1 Califica actividades (S3)', dim:'5. Calificación y retroalimentación', week:'S3'},
+    {id:'cp_5_1_s4', label:'5.1 Califica actividades (S4)', dim:'5. Calificación y retroalimentación', week:'S4'},
+    {id:'cp_5_2_s1', label:'5.2 Retroalimenta y rúbrica (S1)', dim:'5. Calificación y retroalimentación', week:'S1'},
+    {id:'cp_5_2_s2', label:'5.2 Retroalimenta y rúbrica (S2)', dim:'5. Calificación y retroalimentación', week:'S2'},
+    {id:'cp_5_2_s3', label:'5.2 Retroalimenta y rúbrica (S3)', dim:'5. Calificación y retroalimentación', week:'S3'},
+    {id:'cp_5_2_s4', label:'5.2 Retroalimenta y rúbrica (S4)', dim:'5. Calificación y retroalimentación', week:'S4'},
+    // 6. Consultas
+    {id:'cp_6_1_s1', label:'6.1 Responde comunicaciones (S1)', dim:'6. Atención a estudiantes', week:'S1'},
+    {id:'cp_6_1_s2', label:'6.1 Responde comunicaciones (S2)', dim:'6. Atención a estudiantes', week:'S2'},
+    {id:'cp_6_1_s3', label:'6.1 Responde comunicaciones (S3)', dim:'6. Atención a estudiantes', week:'S3'},
+    {id:'cp_6_1_s4', label:'6.1 Responde comunicaciones (S4)', dim:'6. Atención a estudiantes', week:'S4'},
+    // 7. Riesgo
+    {id:'cp_7_1_s1', label:'7.1 Incentiva contra Riesgo (S1)', dim:'7. Riesgo Académico', week:'S1'},
+    {id:'cp_7_1_s2', label:'7.1 Incentiva contra Riesgo (S2)', dim:'7. Riesgo Académico', week:'S2'},
+    {id:'cp_7_1_s3', label:'7.1 Incentiva contra Riesgo (S3)', dim:'7. Riesgo Académico', week:'S3'},
+    {id:'cp_7_1_s4', label:'7.1 Incentiva contra Riesgo (S4)', dim:'7. Riesgo Académico', week:'S4'},
+    // 8. Conformidad
+    {id:'cp_8_1_s4', label:'8.1 Conformidad de cierre (S4)', dim:'8. Conformidad y Cierre', week:'S4'},
+    {id:'cp_8_2_s4', label:'8.2 Realiza informes (S4)', dim:'8. Conformidad y Cierre', week:'S4'}
+  ];
+
+  let CURRENT_CRITERIA_MAP = CRITERIA_MAP_VIRTUAL;
 
   let globalData=null; let currentCourse=null; let currentModule='VIRTUAL'; let currentWeekId='S1';
 
@@ -94,7 +141,7 @@
          timeLeftHours = diff / (1000*60*60);
       }
 
-      const items = CRITERIA_MAP.filter(x => x.week === weekKey);
+      const items = CURRENT_CRITERIA_MAP.filter(x => x.week === weekKey);
       let filled=0;
       items.forEach(i => { if(grades && grades[i.id] > 0) filled++; });
       const progress = items.length ? Math.round((filled/items.length)*100) : 0;
@@ -120,60 +167,13 @@
   }
 
   // --- TEMPLATE SYSTEM (NEW) ---
-  function getTemplate(type, course, week) {
-     const profName = course.professor.split(' ')[0]; // Primer nombre
-     const weekNum = week.replace('S', '');
-     
-     // Helper para título propio (Title Case)
-     const toTitleCase = (str) => {
-        return str.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase());
-     };
-     
-     // El usuario especificó que Grado es la col B, que mapeamos a course.grade
-     const gradoRaw = course.grade || 'Coordinación Académica';
-     const grado = toTitleCase(gradoRaw);
 
-     if (type === 'CONGRATULATE') {
-         return {
-             subject: `Mención de desempeño destacado y cumplimiento de estándares - ${course.courseName}. Semana ${weekNum}`,
-             body: `Estimado/a Docente ${course.professor}:<br><br>` +
-                   `Mediante la presente, brindamos el reconocimiento debido por la labor docente realizada durante la semana <b>${weekNum}</b> en la asignatura <b>${course.courseName}</b>.<br><br>` + 
-                   `Tras la revisión de los indicadores de desempeño, nos complace validar que su gestión ha cumplido satisfactoriamente con los estándares académicos establecidos. Su rigor y compromiso son vitales para garantizar la excelencia en la calidad del servicio educativo que ofrecemos.<br><br>` +
-                   `Le exhortamos a mantener esta línea de trabajo, consolidando así el prestigio de nuestra institución y el aprendizaje de los estudiantes.<br><br>` +
-                   `Atentamente,<br><br>` +
-                   `<b>Área de ${grado}</b><br>` +
-                   `<b>USMP Virtual.</b>`
-         };
-     } else if (type === 'REPORT') {
-         // Identificar pendientes (calificaciones 1 o 2)
-         const pending = CRITERIA_MAP
-             .filter(x => {
-                 if (x.week !== week) return false;
-                 const val = parseInt(course.grades[x.id] || 0);
-                 return (val === 1 || val === 2);
-             })
-             .map(x => `<li>${x.label}</li>`)
-             .join('');
-             
-         return {
-             subject: `Notificación de Incumplimiento o cumplimiento parcial de sus funciones como docente - USMP Virtual`,
-             body: `Estimado/a ${course.professor}:<br><br>` + 
-                   `Por medio de la presente, le comunicamos los resultados de la supervisión realizada a su desempeño docente durante la semana <b>${weekNum}</b> en la asignatura <b>${course.courseName}</b>.<br><br>` +
-                   `Y le informamos que se ha detectado el incumplimiento de los criterios de calidad establecidos por la normativa de nuestra casa de estudios.<br><br>` +
-                   `<ul>${pending || '<li>Sin observaciones registradas</li>'}</ul><br>` +
-                   `Esta situación afecta directamente el desarrollo del servicio educativo y contraviene las disposiciones académicas vigentes.<br><br>` +
-                   `Le instamos a subsanar las observaciones detectadas de manera inmediata y a alinear estrictamente su gestión con los estándares institucionales.<br><br>` + 
-                   `Quedamos a la espera de su pronta regularización.<br><br>` +
-                   `Atentamente,<br><br>` +
-                   `<b>Área de ${grado}</b><br>` +
-                   `<b>USMP Virtual</b>`
-         };
-     }
-     return { subject: '', body: '' };
-  }
 
   // --- MAIN ---
   function loadModule(key) {
+    currentModule = key;
+    CURRENT_CRITERIA_MAP = (key === 'PRESENCIAL') ? CRITERIA_MAP_PRESENCIAL : CRITERIA_MAP_VIRTUAL;
+    
     document.getElementById('home-view').classList.add('hidden');
     document.getElementById('module-view').classList.remove('hidden');
     document.getElementById('module-view').style.display='flex';
@@ -231,7 +231,8 @@
       let count = 0;
       
       // Iterar sobre todos los criterios posibles
-      CRITERIA_MAP.forEach(item => {
+      // Iterar sobre todos los criterios posibles
+      CURRENT_CRITERIA_MAP.forEach(item => {
           const val = parseInt(course.grades[item.id] || 0);
           if (val > 0) {
               total += val;
@@ -242,6 +243,20 @@
       if (count === 0) return 0;
       const avg4 = total / count;
       return (avg4 * 5).toFixed(2); // 4 * 5 = 20
+  }
+
+  function getWeekVigesimal(course, weekId) {
+      let total = 0;
+      let count = 0;
+      CURRENT_CRITERIA_MAP.filter(x => x.week === weekId).forEach(item => {
+          const val = parseInt(course.grades[item.id] || 0);
+          if (val > 0) {
+              total += val;
+              count++;
+          }
+      });
+      if (count === 0) return "0.00";
+      return ((total / count) * 5).toFixed(2);
   }
 
   function renderDashboardStats(courses) {
@@ -415,8 +430,8 @@
            </div>
            
            <div class="flex gap-2">
-              <a href="${c.urlAP || '#'}" target="_blank" class="${c.urlAP?'':'opacity-50 pointer-events-none'} text-xs bg-blue-50 text-blue-600 px-2 py-1.5 rounded font-bold hover:bg-blue-100 transition-colors" title="Aula Virtual AP"><i class="fa-solid fa-globe"></i></a>
-              <a href="${c.urlUSMP || '#'}" target="_blank" class="${c.urlUSMP?'':'opacity-50 pointer-events-none'} text-xs bg-red-50 text-red-600 px-2 py-1.5 rounded font-bold hover:bg-red-100 transition-colors" title="Aula Virtual USMP"><i class="fa-solid fa-university"></i></a>
+              <a href="${c.urlAP || '#'}" target="_blank" onclick="logAccess('AP')" class="${c.urlAP?'':'opacity-50 pointer-events-none'} text-xs bg-blue-50 text-blue-600 px-2 py-1.5 rounded font-bold hover:bg-blue-100 transition-colors" title="Aula Virtual AP"><i class="fa-solid fa-globe"></i></a>
+              <a href="${c.urlUSMP || '#'}" target="_blank" onclick="logAccess('USMP')" class="${c.urlUSMP?'':'opacity-50 pointer-events-none'} text-xs bg-red-50 text-red-600 px-2 py-1.5 rounded font-bold hover:bg-red-100 transition-colors" title="Aula Virtual USMP"><i class="fa-solid fa-university"></i></a>
               <button class="text-xs font-bold text-gray-400 group-hover:text-gray-600 px-2 py-1.5 hover:bg-gray-100 rounded transition-colors"><i class="fa-solid fa-chevron-right"></i></button>
            </div>
         `;
@@ -459,6 +474,9 @@
         el.href = url;
         el.classList.remove('hidden', 'opacity-50', 'pointer-events-none');
         el.classList.add('flex');
+        // TRACKING CLICK
+        const trackType = id==='link-ap' ? 'AP' : 'USMP';
+        el.setAttribute('onclick', `logAccess('${trackType}')`);
      } else {
         el.href='#';
         el.classList.add('opacity-50', 'pointer-events-none');
@@ -554,21 +572,50 @@
 
      document.getElementById('week-progress-bar').style.width = stats.progress + '%';
      document.getElementById('week-progress-text').innerText = stats.progress + '%';
+     
+     // Update Weekly Average Display
+     const weekAvg = getWeekVigesimal(currentCourse, currentWeekId);
+     const weekAvgEl = document.getElementById('week-avg-display');
+     if(weekAvgEl) {
+         weekAvgEl.innerText = weekAvg;
+         // Dynamic color
+         const val = parseFloat(weekAvg);
+         weekAvgEl.className = "text-xs font-bold " + (val>=14?'text-green-600':val>=10.5?'text-yellow-600':'text-red-600');
+     }
 
-     const items = CRITERIA_MAP.filter(x => x.week === currentWeekId);
+     const items = CURRENT_CRITERIA_MAP.filter(x => x.week === currentWeekId);
      const groups = {};
      items.forEach(i => { if(!groups[i.dim]) groups[i.dim]=[]; groups[i.dim].push(i); });
      
      for(const [dim, list] of Object.entries(groups)) {
          const box = document.createElement('div');
          box.className = "bg-white border boundary-gray-200 rounded-lg overflow-hidden";
-         box.innerHTML = `<div class="bg-gray-50 px-4 py-2 text-[10px] font-bold text-gray-500 uppercase tracking-wider">${dim}</div>`;
+         
+         const headerRow = `
+         <div class="flex justify-between items-center px-3 py-2 bg-gray-50 border-b border-gray-100">
+            <div class="text-[10px] font-bold text-gray-500 uppercase tracking-wider">${dim}</div>
+            <div class="flex gap-1 text-center text-[9px] font-bold text-gray-400 uppercase tracking-tighter">
+                <div class="w-7">Def.</div>
+                <div class="w-7">Reg.</div>
+                <div class="w-7">Bueno</div>
+                <div class="w-7">Muy B.</div>
+            </div>
+         </div>`;
+         
+         box.innerHTML = headerRow;
          const body = document.createElement('div');
          body.className="divide-y divide-gray-100";
          list.forEach(c => {
              const val = parseInt(currentCourse.grades[c.id] || 0);
              let light = 'tl-gray';
              if(val>0) light = (val<=2) ? 'tl-red' : 'tl-green';
+             
+             let labelText = '';
+             let labelColor = 'text-gray-300';
+             if(val===1) { labelText='Deficiente'; labelColor='text-red-600'; }
+             else if(val===2) { labelText='Regular'; labelColor='text-red-600'; }
+             else if(val===3) { labelText='Bueno'; labelColor='text-green-600'; }
+             else if(val===4) { labelText='Muy Bueno'; labelColor='text-green-600'; }
              
              let btns = '';
              [1,2,3,4].forEach(n => {
@@ -585,7 +632,10 @@
                    <div class="traffic-light ${light} mt-0.5" id="tl-${c.id}"></div>
                    <span class="text-xs font-bold text-gray-700">${c.label}</span>
                 </div>
-                <div class="flex gap-1">${btns}</div>
+                <div class="flex items-center gap-3">
+                    <span id="lbl-${c.id}" class="text-[10px] font-bold uppercase ${labelColor} min-w-[60px] text-right hidden md:block">${labelText}</span>
+                    <div class="flex gap-1">${btns}</div>
+                </div>
              `;
              body.appendChild(row);
          });
@@ -594,28 +644,89 @@
      }
      
      // Analytics Btns
+     updateActionButtons();
+  }
+
+  function updateActionButtons() {
      const btnCongrat = document.getElementById('btn-congratulate');
      const btnReport = document.getElementById('btn-report');
-     let low=0;
-     items.forEach(i => { const v=currentCourse.grades[i.id]; if(v==1||v==2) low++; });
      
-     if(btnCongrat) btnCongrat.disabled = !(stats.progress===100 && low===0);
+     // Recalculate stats for CURRENT week
+     const items = CURRENT_CRITERIA_MAP.filter(x => x.week === currentWeekId);
+     let filled=0;
+     let low=0;
+     
+     items.forEach(i => { 
+         const v = parseInt(currentCourse.grades[i.id] || 0); 
+         if(v > 0) filled++;
+         if(v===1 || v===2) low++; 
+     });
+     
+     const progress = items.length ? Math.round((filled/items.length)*100) : 0;
+     
+     if(btnCongrat) btnCongrat.disabled = !(progress===100 && low===0);
      if(btnReport) btnReport.disabled = !(low>0);
   }
 
   function save(id, val, btn) {
+      // UI Immediate Feedback (Traffic Light & Buttons)
       const sibs = btn.parentElement.children;
       for(let s of sibs) s.className = "w-7 h-7 rounded text-xs font-bold border bg-white text-gray-400 border-gray-200";
       btn.className = "w-7 h-7 rounded text-xs font-bold border " + (val<=2?'bg-red-500 text-white border-red-500':'bg-green-500 text-white border-green-500');
       document.getElementById(`tl-${id}`).className = "traffic-light " + (val<=2?'tl-red':'tl-green');
       
+      // Update Dynamic Label
+      const lbl = document.getElementById(`lbl-${id}`);
+      if(lbl) {
+          let txt = ''; let col = '';
+          if(val===1) { txt='Deficiente'; col='text-red-600'; }
+          else if(val===2) { txt='Regular'; col='text-red-600'; }
+          else if(val===3) { txt='Bueno'; col='text-green-600'; }
+          else if(val===4) { txt='Muy Bueno'; col='text-green-600'; }
+          lbl.innerText = txt;
+          lbl.className = `text-[10px] font-bold uppercase ${col} min-w-[60px] text-right hidden md:block`;
+      }
+      
+      // SHOW SAVE INDICATOR
+      const indicator = document.getElementById('save-indicator');
+      if(indicator) {
+          indicator.classList.remove('hidden');
+          indicator.classList.remove('opacity-0', 'translate-y-4'); // Reset animation state
+      }
+
       google.script.run.withSuccessHandler(res=>{
            currentCourse.grades[id] = val;
            currentCourse.timestamps[id] = res.timestamp;
+           
+           // Recalculate Logic
            const stats = getWeekStats(currentCourse.startDate, currentWeekId, currentCourse.grades);
            document.getElementById('week-progress-bar').style.width = stats.progress + '%';
            document.getElementById('week-progress-text').innerText = stats.progress + '%';
+           
+           // Update Weekly Average
+           const weekAvg = getWeekVigesimal(currentCourse, currentWeekId);
+           const weekAvgEl = document.getElementById('week-avg-display');
+           if(weekAvgEl) {
+               weekAvgEl.innerText = weekAvg;
+               const val = parseFloat(weekAvg);
+               weekAvgEl.className = "text-xs font-bold " + (val>=14?'text-green-600':val>=10.5?'text-yellow-600':'text-red-600');
+           }
+
            renderUnifiedTabs();
+           updateActionButtons(); // Update buttons immediately
+           
+           // HIDE SAVE INDICATOR
+           if(indicator) {
+               // Optional: Show "Saved" state? For now just hide after delay
+               setTimeout(() => {
+                   indicator.classList.add('opacity-0', 'translate-y-4'); // Animate out
+                   setTimeout(() => indicator.classList.add('hidden'), 300); // Hide after transition
+               }, 600); // Keep visible briefly
+           }
+
+      }).withFailureHandler((e) => {
+           alert("Error al guardar: " + e);
+           if(indicator) indicator.classList.add('hidden');
       }).saveGrade(currentCourse.rowIndex, id, val, currentWeekId, currentModule);
   }
   
@@ -631,18 +742,108 @@
   function closeEmailModal(){ document.getElementById('email-modal').classList.add('hidden'); }
   
   function sendEmailFromModal(){ 
-      google.script.run.withSuccessHandler(()=>closeEmailModal()).sendTeacherEmail(
+      const btn = document.getElementById('btn-send-email');
+      const originalText = btn.innerText;
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Enviando...';
+
+      google.script.run
+      .withSuccessHandler(() => {
+          closeEmailModal();
+          btn.disabled = false;
+          btn.innerText = originalText;
+          btn.innerText = originalText;
+          alert("¡Correo enviado correctamente!");
+          
+          // TRACKING
+          const subj = document.getElementById('email-subject').value;
+          const type = (subj && subj.includes('Mención')) ? 'CONGRATULATE' : 'REPORT';
+          logInteraction('email', type);
+      })
+      .withFailureHandler((e) => {
+          alert("Error al enviar: " + e);
+          btn.disabled = false;
+          btn.innerText = originalText;
+      })
+      .sendTeacherEmail(
           document.getElementById('email-to').value, 
           document.getElementById('email-subject').value, 
-          document.getElementById('email-body').innerText
+          document.getElementById('email-body').innerHTML
       ); 
   }
 
+  // --- PASTE HANDLER (IMAGES) ---
+  // Fix for Gmail clipping: Compress images before inserting
+  try {
+      var emailBody = document.getElementById('email-body');
+      if(emailBody) {
+          emailBody.addEventListener('paste', function(e) {
+              var clipboardData = e.clipboardData || e.originalEvent.clipboardData;
+              if (!clipboardData) return;
+              
+              var items = clipboardData.items;
+              var blob = null;
+              for (var i = 0; i < items.length; i++) {
+                  if (items[i].type.indexOf("image") === 0) {
+                      blob = items[i].getAsFile();
+                      break;
+                  }
+              }
+
+              if (blob) {
+                  e.preventDefault();
+                  var reader = new FileReader();
+                  reader.onload = function(event) {
+                      var img = new Image();
+                      img.onload = function() {
+                          var canvas = document.createElement('canvas');
+                          var width = img.width;
+                          var height = img.height;
+                          
+                          // Max width 600px for email safety
+                          var MAX_WIDTH = 600;
+                          if (width > MAX_WIDTH) {
+                              height *= MAX_WIDTH / width;
+                              width = MAX_WIDTH;
+                          }
+                          
+                          canvas.width = width;
+                          canvas.height = height;
+                          var ctx = canvas.getContext('2d');
+                          ctx.drawImage(img, 0, 0, width, height);
+                          
+                          // Compress to JPEG 0.7
+                          var dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+                          
+                          // Insert image at cursor
+                          var imgTag = '<img src="' + dataUrl + '" style="max-width:100%; border:1px solid #ddd; margin: 10px 0;">';
+                          document.execCommand('insertHTML', false, imgTag);
+                      };
+                      img.src = event.target.result;
+                  };
+                  reader.readAsDataURL(blob);
+              }
+          });
+      }
+  } catch(e) { console.error("Paste handler init error", e); }
+
   function sendWhatsApp() {
      // Lógica visual por ahora, ya que requiere API externa o enlace web
-     const phone = currentCourse.phoneNumber || '';
-     const msg = encodeURIComponent(document.getElementById('email-body').innerText);
-     if(phone) window.open(`https://wa.me/${phone.replace(/[^0-9]/g,'')}?text=${msg}`, '_blank');
-     else alert('El docente no tiene número registrado.');
+     var phone = currentCourse.phoneNumber || '';
+     var msg = encodeURIComponent(document.getElementById('email-body').innerText);
+     if(phone) {
+         var cleanPhone = phone.replace(/[^0-9]/g,'');
+         var url = 'https://wa.me/' + cleanPhone + '?text=' + msg;
+         window.open(url, '_blank');
+         
+         // TRACKING
+         let type = 'REPORT';
+         const subj = document.getElementById('email-subject').value;
+         if(subj && subj.includes('Mención')) type = 'CONGRATULATE';
+         logInteraction('wa', type);
+     } else {
+         alert('El docente no tiene número registrado.');
+     }
   }
+  console.log('Script loaded successfully');
 </script>

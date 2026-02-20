@@ -13,6 +13,8 @@
   <?!= include('View_Dashboard'); ?>
   <?!= include('View_Modal'); ?>
 
+  <?!= include('JS_Templates'); ?>
+  <?!= include('JS_Tracking'); ?>
   <?!= include('JS_Client'); ?>
   
 </body>

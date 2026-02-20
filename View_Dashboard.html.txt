@@ -128,7 +128,13 @@
              <!-- PROGRESS BAR -->
              <div class="mb-6">
                <div class="flex justify-between items-end mb-1">
-                  <span class="text-xs font-bold text-gray-500 uppercase">Avance de Semana</span>
+                  <div class="flex items-center gap-4">
+                      <span class="text-xs font-bold text-gray-500 uppercase">Avance de Semana</span>
+                      <div class="bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100 flex items-center gap-2">
+                          <span class="text-[10px] font-bold text-indigo-400 uppercase">Promedio Semanal:</span>
+                          <span id="week-avg-display" class="text-xs font-bold text-indigo-700">0.00</span>
+                      </div>
+                  </div>
                   <span id="week-progress-text" class="text-xs font-bold text-blue-600">0%</span>
                </div>
                <div class="w-full bg-gray-200 rounded-full h-1.5 overflow-hidden">
@@ -136,9 +142,40 @@
                </div>
              </div>
 
-             <div id="criteria-container" class="space-y-6 pb-10"></div>
+             <div id="criteria-container" class="space-y-6 pb-6"></div>
+             
+             <!-- LEYENDA -->
+             <div class="border-t border-gray-100 pt-6 mt-4">
+                 <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-3">Leyenda de Calificación</h4>
+                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                     <div class="flex items-center gap-2 bg-red-50 p-2 rounded border border-red-100">
+                         <span class="w-6 h-6 rounded flex items-center justify-center bg-red-500 text-white font-bold text-[10px] flex-shrink-0">1</span>
+                         <span class="text-gray-600"><strong class="text-red-700">Deficiente</strong> (No cumplió con el criterio)</span>
+                     </div>
+                     <div class="flex items-center gap-2 bg-red-50 p-2 rounded border border-red-100">
+                         <span class="w-6 h-6 rounded flex items-center justify-center bg-red-500 text-white font-bold text-[10px] flex-shrink-0">2</span>
+                         <span class="text-gray-600"><strong class="text-red-700">Regular</strong> (Cumplió el criterio de manera parcial)</span>
+                     </div>
+                     <div class="flex items-center gap-2 bg-green-50 p-2 rounded border border-green-100">
+                         <span class="w-6 h-6 rounded flex items-center justify-center bg-green-500 text-white font-bold text-[10px] flex-shrink-0">3</span>
+                         <span class="text-gray-600"><strong class="text-green-700">Bueno</strong> (Cumplió el criterio en las fechas establecidas)</span>
+                     </div>
+                     <div class="flex items-center gap-2 bg-green-50 p-2 rounded border border-green-100">
+                         <span class="w-6 h-6 rounded flex items-center justify-center bg-green-500 text-white font-bold text-[10px] flex-shrink-0">4</span>
+                         <span class="text-gray-600"><strong class="text-green-700">Muy Bueno</strong> (Cumplió el criterio con creces)</span>
+                     </div>
+                 </div>
+             </div>
           </div>
        </div>
     </section>
   </main>
+  
+  <!-- SAVE INDICATOR TOAST -->
+  <div id="save-indicator" class="fixed bottom-6 right-6 bg-gray-900/90 text-white px-5 py-3 rounded-xl shadow-2xl z-50 flex items-center gap-3 hidden backdrop-blur-sm border border-gray-700/50 transition-all duration-300 transform translate-y-0 opacity-100">
+      <div class="w-2 h-2 bg-white rounded-full animate-bounce"></div>
+      <div class="w-2 h-2 bg-white rounded-full animate-bounce" style="animation-delay: 0.1s"></div>
+      <div class="w-2 h-2 bg-white rounded-full animate-bounce" style="animation-delay: 0.2s"></div>
+      <span class="font-medium text-sm tracking-wide">Guardando cambios...</span>
+  </div>
 </div>

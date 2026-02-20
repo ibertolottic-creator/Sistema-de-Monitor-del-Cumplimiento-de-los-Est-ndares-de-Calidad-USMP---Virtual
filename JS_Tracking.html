@@ -1,0 +1,43 @@
+<script>
+    /**
+     * JS_Tracking.html
+     * Maneja el registro de interacciones (Hits, Emails, WhatsApp)
+     */
+
+    function logAccess(type) {
+        if (!currentCourse || !currentCourse.rowIndex) return;
+        console.log("Logging access:", type);
+
+        // Llamada al backend
+        google.script.run
+            .withFailureHandler(e => console.warn("Error logAccess", e))
+            .trackAccess(currentCourse.rowIndex, type, currentModule);
+    }
+
+    function logInteraction(channel, type) {
+        if (!currentCourse || !currentCourse.rowIndex) return;
+
+        // Construir el nombre del encabezado esperado por el backend/CSV
+        // Formato: channel_type_week
+        // channel: 'email' o 'wa'
+        // type: 'felicita' (CONGRATULATE) o 'reporta' (REPORT)
+        // week: 's1', 's2', 's3', 's4'
+
+        const weekSuffix = currentWeekId.toLowerCase(); // s1
+        let typeSuffix = 'reporta';
+        if (type === 'CONGRATULATE') typeSuffix = 'felicita';
+
+        // Ejemplo: email_felicita_s1
+        const headerName = `${channel}_${typeSuffix}_${weekSuffix}`;
+
+        console.log("Logging interaction:", headerName);
+
+        google.script.run
+            .withSuccessHandler(res => {
+                if (res && res.success) console.log("Interaction logged:", res.newVal);
+                else console.warn("Log failed:", res.message);
+            })
+            .withFailureHandler(e => console.error("Error logInteraction", e))
+            .trackInteraction(currentCourse.rowIndex, headerName, currentModule);
+    }
+</script>
