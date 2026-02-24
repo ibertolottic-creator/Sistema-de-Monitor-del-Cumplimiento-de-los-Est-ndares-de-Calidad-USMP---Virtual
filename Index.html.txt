@@ -5,17 +5,91 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Sistema de Gestión de Calidad</title>
+  <!-- Chart.js para Dashboard F3.1 -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <?!= include('CSS'); ?>
 </head>
-<body class="text-gray-800 h-screen flex flex-col overflow-hidden">
+<body class="text-gray-800 h-screen flex flex-col overflow-hidden relative">
+
+  <!-- Full-screen Initial Auth Loader -->
+  <div id="initial-auth-loader" class="fixed inset-0 bg-gray-50 z-50 flex flex-col items-center justify-center transition-opacity duration-500">
+     <div class="bg-white p-8 rounded-2xl shadow-xl flex flex-col items-center max-w-sm text-center">
+         <img src="https://lh3.googleusercontent.com/d/1PKsD5DdSr5gzxpoh0mC-GVnBx5PAgp7Q" alt="USMP Logo" class="h-16 mb-6">
+         <i class="fa-solid fa-spinner fa-spin text-4xl text-red-600 mb-4"></i>
+         <h2 class="text-lg font-bold text-gray-800">Autenticando usuario...</h2>
+         <p class="text-sm text-gray-500 mt-2">Por favor, espere un momento.</p>
+     </div>
+  </div>
+
+  <!-- Global Toast for Welcome Messages -->
+  <div id="global-toast" class="fixed top-4 right-4 z-50 transform transition-all duration-300 translate-x-full opacity-0 max-w-sm bg-white border-l-4 rounded-lg shadow-lg pointer-events-none p-4 flex items-start gap-4">
+      <div id="global-toast-icon" class="text-2xl mt-0.5"></div>
+      <div>
+          <h4 id="global-toast-title" class="font-bold text-gray-800 text-sm"></h4>
+          <p id="global-toast-msg" class="text-xs text-gray-600 mt-1"></p>
+      </div>
+  </div>
 
   <?!= include('View_Home'); ?>
   <?!= include('View_Dashboard'); ?>
   <?!= include('View_Modal'); ?>
+  <?!= include('View_Assignment'); ?>
 
   <?!= include('JS_Templates'); ?>
   <?!= include('JS_Tracking'); ?>
   <?!= include('JS_Client'); ?>
   
+  <script>
+    // System Initialization
+    window.onload = function() {
+       google.script.run
+       .withSuccessHandler(res => {
+           if(res && res.success) {
+               window.AUTH_DATA = res; // Store globally
+               initAppUI(res);
+           } else {
+               alert("Error de autenticación: " + (res?res.message:'Error desconocido'));
+           }
+       })
+       .withFailureHandler(e => {
+           alert("Error crítico de conexión: " + e);
+       })
+       .getGlobalSessionData();
+    };
+
+    function initAppUI(auth) {
+        // Ocultar Loader
+        const loader = document.getElementById('initial-auth-loader');
+        loader.classList.add('opacity-0');
+        setTimeout(() => { loader.classList.add('hidden'); }, 500);
+
+        // Mostrar Toast de bienvenida
+        const toast = document.getElementById('global-toast');
+        const tTitle = document.getElementById('global-toast-title');
+        const tMsg = document.getElementById('global-toast-msg');
+        const tIcon = document.getElementById('global-toast-icon');
+
+        if(auth.isGuest) {
+            toast.classList.add('border-orange-500');
+            tIcon.innerHTML = '<i class="fa-solid fa-triangle-exclamation text-orange-500"></i>';
+            tTitle.innerText = "Acceso Limitado";
+            tMsg.innerText = `Usuario ${auth.userEmail} no está asignado. Rol de invitado activado. Solo lectura.`;
+        } else {
+            toast.classList.add('border-green-500');
+            tIcon.innerHTML = '<i class="fa-solid fa-circle-check text-green-500"></i>';
+            tTitle.innerText = "Acceso Concedido";
+            tMsg.innerText = `Bienvenido(a) ${auth.name}.`;
+        }
+
+        // Animar Toast In
+        setTimeout(() => {
+            toast.classList.remove('translate-x-full', 'opacity-0');
+            // Animar Toast Out
+            setTimeout(() => {
+                toast.classList.add('translate-x-full', 'opacity-0');
+            }, 6000);
+        }, 800);
+    }
+  </script>
 </body>
 </html>

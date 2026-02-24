@@ -9,7 +9,7 @@
            <img src="https://lh3.googleusercontent.com/d/1PKsD5DdSr5gzxpoh0mC-GVnBx5PAgp7Q" alt="Logo" class="h-12 hidden md:block">
            <div class="h-8 w-px bg-gray-300 hidden md:block"></div>
            <div>
-              <h1 class="text-sm md:text-lg font-bold usmp-title uppercase leading-tight">Sistema de Monitor - USMP Virtual</h1>
+              <h1 id="dashboard-main-title" class="text-sm md:text-lg font-bold usmp-title uppercase leading-tight">Sistema de Monitor - USMP Virtual</h1>
               <div class="flex items-center gap-2">
                  <button onclick="goHome()" class="text-xs text-gray-500 hover:text-red-600 flex items-center gap-1 transition-colors">
                    <i class="fa-solid fa-chevron-left"></i> Volver al Inicio
@@ -172,10 +172,7 @@
   </main>
   
   <!-- SAVE INDICATOR TOAST -->
-  <div id="save-indicator" class="fixed bottom-6 right-6 bg-gray-900/90 text-white px-5 py-3 rounded-xl shadow-2xl z-50 flex items-center gap-3 hidden backdrop-blur-sm border border-gray-700/50 transition-all duration-300 transform translate-y-0 opacity-100">
-      <div class="w-2 h-2 bg-white rounded-full animate-bounce"></div>
-      <div class="w-2 h-2 bg-white rounded-full animate-bounce" style="animation-delay: 0.1s"></div>
-      <div class="w-2 h-2 bg-white rounded-full animate-bounce" style="animation-delay: 0.2s"></div>
-      <span class="font-medium text-sm tracking-wide">Guardando cambios...</span>
+  <div id="save-indicator" class="fixed inset-0 bg-gray-900/50 backdrop-blur-sm z-[100] flex items-center justify-center hidden transition-all duration-300 opacity-100">
+      <!-- El contenido se inyecta desde JS_Client -->
   </div>
 </div>

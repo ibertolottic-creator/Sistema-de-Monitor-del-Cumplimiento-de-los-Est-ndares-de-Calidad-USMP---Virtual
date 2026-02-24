@@ -59,12 +59,13 @@ Este archivo contiene la lógica del servidor. A continuación, cada función ex
     2.  **Seguridad:** Verifica el email del usuario activo (`Session.getActiveUser()`).
         *   Si es `ADMIN`: Carga todas las filas.
         *   Si no: Filtra las filas donde la columna "Coordinador" coincide con el email del usuario.
-    3.  **Mapeo de Datos:** Recorre las filas y construye un arreglo de objetos `course` con:
+    3.  **Mapeo de Datos y Fallbacks:** Recorre las filas y construye un arreglo de objetos `course` con:
         *   `rowIndex`: Índice real en la hoja (para guardar después).
         *   `grades`: Objeto con pares `id_criterio: nota`.
         *   `timestamps`: Objeto con fechas de modificación.
         *   `hits/audit`: Datos de tracking.
-    4.  **Retorno:** Objeto JSON con `courses`, `userEmail` y `role`.
+        *   **Extracción de Enlaces (Robustez):** Intenta extraer la URL mediante `getRichTextValues()`. Si falla u obtiene texto plano (fallback), emplea algoritmos para interpretar columnas M/N (12/13) inyectando prefijos "https://" al vuelo si están ausentes, garantizando el despliegue de los botones AP/USMP en el Frontend.
+    4.  **Retorno:** Objeto JSON con `courses`, `userEmail` y `role`. (Nota: Los invitados reciben toda la carga pero son restringidos visualmente en el frontend).
 
 ### `saveGrade(rowIndex, criteriaId, value, weekKey, moduleKey)`
 *   **Función:** Guarda una nota y audita la acción.
@@ -110,7 +111,8 @@ Controlador de la interfaz.
     *   Define `CURRENT_CRITERIA_MAP` eligiendo entre la configuración Virtual o Presencial.
     *   Llama a `getInitialData`.
 *   **`renderOverview()`:**
-    *   Itera sobre `globalData.courses`.
+    *   Itera sobre `globalData.courses` para el filtrado, y las usa directamente en la barra macro global `renderDashboardStats()`.
+    *   **Control de Invitados:** Implementa un `return` anticipado inyectando un componente DOM (candado/bloqueo) si detecta la variable global `window.AUTH_DATA.isGuest`, permitiendo al usuario ver el progreso y promedio general en la barra superior estadística, pero encapsulando estrictamente el detalle por fila/docente.
     *   Calcula el progreso visual (barras de colores) usando `getWeekStats`.
     *   Calcula el promedio vigesimal usando `getCourseVigesimal`.
     *   Genera las tarjetas de los cursos.

@@ -169,17 +169,72 @@
   // --- TEMPLATE SYSTEM (NEW) ---
 
 
+  // --- MANTENIMIENTO GLOBAL (Fase 3.3) ---
+  function showMaintenanceScreen(msg = "Sincronizando Bases de Datos... Por favor, espere.") {
+      let overlay = document.getElementById('maintenance-overlay');
+      if(!overlay) {
+          overlay = document.createElement('div');
+          overlay.id = 'maintenance-overlay';
+          overlay.className = 'fixed inset-0 bg-gray-900 bg-opacity-95 z-[9999] flex flex-col items-center justify-center text-white';
+          overlay.innerHTML = `
+              <i class="fa-solid fa-gears text-6xl text-purple-400 mb-6 fa-spin"></i>
+              <h2 class="text-3xl font-black tracking-tight mb-3 text-center px-4" id="maintenance-msg">${msg}</h2>
+              <p class="text-gray-300 text-base font-medium animate-pulse text-center px-4 max-w-lg">
+                 Esta operación puede demorar varios minutos. Por favor, no cierre esta pestaña.<br/><br/>
+                 Ningún usuario puede usar la plataforma mientras se actualiza.
+              </p>
+          `;
+          document.body.appendChild(overlay);
+      } else {
+          document.getElementById('maintenance-msg').innerText = msg;
+          overlay.classList.remove('hidden');
+      }
+  }
+
+  function hideMaintenanceScreen() {
+      const overlay = document.getElementById('maintenance-overlay');
+      if(overlay) overlay.classList.add('hidden');
+  }
+
+  function handleMaintenanceResponse(res) {
+      if (res && res.maintenance) {
+          alert("El sistema se encuentra en mantenimiento y sus cambios no han sido guardados. Por favor, intente ingresar más tarde.");
+          setTimeout(() => { window.location.reload(); }, 1500);
+          return true;
+      }
+      return false;
+  }
+
   // --- MAIN ---
   function loadModule(key) {
+    if(key === 'ASIGNACION') {
+        loadAssignmentModule();
+        return;
+    }
+
     currentModule = key;
     CURRENT_CRITERIA_MAP = (key === 'PRESENCIAL') ? CRITERIA_MAP_PRESENCIAL : CRITERIA_MAP_VIRTUAL;
     
     document.getElementById('home-view').classList.add('hidden');
     document.getElementById('module-view').classList.remove('hidden');
     document.getElementById('module-view').style.display='flex';
+    document.getElementById('spinner-box').classList.remove('hidden');
+    document.getElementById('main-content').classList.add('hidden');
     
+    // 1°. Título del módulo
+    const dashTitle = document.getElementById('dashboard-main-title');
+    if (dashTitle) {
+       dashTitle.innerText = key === 'PRESENCIAL' ? 'SISTEMA DE MONITOREO DE ASIGNATURAS PRESENCIALES - USMP VIRTUAL' : 'SISTEMA DE MONITOREO DE ASIGNATURAS VIRTUALES - USMP VIRTUAL';
+    }
+    
+    // Ocultar botones de Sincronización en la vista General (Virtual/Presencial) si existen (Falla 5)
+    // Buscamos si hay algún contenedor global de acciones y lo ocultamos proactivamente al entrar a estos módulos
+    const globalActions = document.getElementById('assign-global-actions');
+    if (globalActions) globalActions.style.display = 'none';
+
     google.script.run
     .withSuccessHandler(d => {
+         if(handleMaintenanceResponse(d)) return;
          if (d && d.role === 'ERROR') {
              alert("Error Backend: " + d.message);
              document.getElementById('spinner-box').innerHTML = `<p class="text-red-600 font-bold">${d.message}</p>`;
@@ -219,10 +274,521 @@
 
   function goHome() {
      document.getElementById('module-view').classList.add('hidden');
+     document.getElementById('module-view').style.display='none';
+     document.getElementById('assignment-view').classList.add('hidden');
      document.getElementById('home-view').classList.remove('hidden');
      globalData=null; currentCourse=null;
      document.getElementById('spinner-box').classList.remove('hidden');
      document.getElementById('main-content').classList.add('hidden');
+  }
+
+  // ==========================================
+  // MÓDULO ASIGNACIÓN (Fase 3)
+  // ==========================================
+  let globalAssignments = [];
+  let globalCoordinators = [];
+
+  let assignChartInstance = null;
+
+  function loadAssignmentModule() {
+      document.getElementById('home-view').classList.add('hidden');
+      document.getElementById('assignment-view').classList.remove('hidden');
+      
+      // Mostrar info del usuario en cabecera
+      if(window.AUTH_DATA) {
+          const name = window.AUTH_DATA.name || window.AUTH_DATA.userEmail;
+          document.getElementById('assign-user-name').innerText = name;
+          document.getElementById('assign-user-role').innerText = window.AUTH_DATA.role;
+          document.getElementById('assign-user-avatar').innerText = name.charAt(0).toUpperCase();
+      }
+
+      document.getElementById('assign-list').innerHTML = `
+          <div class="flex flex-col items-center justify-center p-10 text-gray-500">
+              <i class="fa-solid fa-spinner fa-spin text-3xl mb-4 text-purple-500"></i>
+              <p>Cargando lista de asignaturas y coordinadores...</p>
+          </div>
+      `;
+
+      google.script.run
+      .withSuccessHandler(res => {
+          if(handleMaintenanceResponse(res)) return;
+          if(res && res.error) {
+              alert(res.message);
+              goHome();
+              return;
+          }
+          globalAssignments = res.courses || [];
+          globalCoordinators = res.coordinators || [];
+          renderAssignmentDashboard();
+          populateBulkDropdowns();
+          renderAssignmentList();
+      })
+      .withFailureHandler(e => {
+          alert("Error cargando módulo: " + e);
+          goHome();
+      })
+      .getAssignmentData();
+  }
+
+  function renderAssignmentDashboard() {
+      // 1. Calcular totales por coordinador
+      // El key será 'nombre|email' o solo 'nombre' si email no viene 100% igual. Usaremos nombre+email garantizado por option.
+      const stats = {};
+      let totalAssigned = 0;
+      let totalUnassigned = 0;
+
+      // Inicializar stats para todos los posibles (incluso si tienen 0)
+      globalCoordinators.forEach(c => {
+          stats[`${c.name}|${c.email}`] = { name: c.name, courses: 0, students: 0, color: getRandomColor(c.name) };
+      });
+
+      globalAssignments.forEach(c => {
+          let sCount = parseInt(c.studentsCount) || 0;
+          if(c.currentCoordName && c.currentCoordEmail) {
+              const key = `${c.currentCoordName}|${c.currentCoordEmail}`;
+              if(!stats[key]) {
+                  // Si por alguna razón el asignado actual no está en la lista de coordinadores general
+                  stats[key] = { name: c.currentCoordName, courses: 0, students: 0, color: getRandomColor(c.currentCoordName) };
+              }
+              stats[key].courses++;
+              stats[key].students += sCount;
+              totalAssigned++;
+          } else {
+              totalUnassigned++;
+          }
+      });
+
+      // 2. Dibujar KPI Cards
+      const container = document.getElementById('assign-kpi-container');
+      container.innerHTML = '';
+      
+      const statKeys = Object.keys(stats).sort((a,b) => stats[b].courses - stats[a].courses);
+      
+      statKeys.forEach(k => {
+          const st = stats[k];
+          // Mostrar incluso si están en 0, para que se vea el dashboard completo, o filtrar si son muchos.
+          if(st.courses > 0 || globalCoordinators.find(gc => `${gc.name}|${gc.email}` === k)) {
+              const card = document.createElement('div');
+              card.className = "bg-gray-50 p-3 rounded-lg border border-gray-100 flex items-center justify-between cursor-pointer hover:bg-purple-50 hover:border-purple-200 transition-colors group";
+              // Click en la tarjeta filtra la lista por este coordinador
+              card.onclick = () => {
+                  document.getElementById('assign-search').value = st.name;
+                  renderAssignmentList();
+              };
+              
+              card.innerHTML = `
+                  <div class="flex items-center gap-3">
+                      <div class="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-xs" style="background-color: ${st.color}">
+                          ${st.name.charAt(0).toUpperCase()}
+                      </div>
+                      <div class="flex flex-col">
+                          <span class="text-xs font-bold text-gray-700 truncate max-w-[100px] xl:max-w-[150px]" title="${st.name}">${st.name}</span>
+                          <span class="text-[10px] text-gray-400 font-medium group-hover:text-purple-500">${st.courses} asig. | ${st.students} alum.</span>
+                      </div>
+                  </div>
+              `;
+              container.appendChild(card);
+          }
+      });
+
+      // Tarjeta Sin Asignar (Opcional visualmente útil)
+      if(totalUnassigned > 0) {
+          const cardUnassigned = document.createElement('div');
+          cardUnassigned.className = "bg-red-50 p-3 rounded-lg border border-red-100 flex items-center justify-between cursor-pointer hover:bg-red-100 transition-colors";
+          cardUnassigned.onclick = () => { document.getElementById('assign-search').value = "Sin asignar"; renderAssignmentList(); };
+          cardUnassigned.innerHTML = `
+              <div class="flex items-center gap-3">
+                  <div class="w-8 h-8 rounded-full flex items-center justify-center text-red-500 bg-red-100 font-bold text-xs"><i class="fa-solid fa-triangle-exclamation"></i></div>
+                  <div class="flex flex-col"><span class="text-xs font-bold text-red-700">Sin Asignar</span><span class="text-[10px] text-red-400 font-medium">${totalUnassigned} asig.</span></div>
+              </div>
+          `;
+          container.appendChild(cardUnassigned);
+      }
+
+      // 3. Dibujar/Actualizar Chart.js
+      renderChart(stats, totalUnassigned);
+  }
+
+  function renderChart(stats, unassignedCount) {
+      const ctx = document.getElementById('assignChart');
+      if(!ctx) return;
+
+      const labels = [];
+      const data = [];
+      const bgColors = [];
+
+      Object.values(stats).forEach(st => {
+          if(st.courses > 0) {
+              labels.push(st.name);
+              data.push(st.courses);
+              bgColors.push(st.color);
+          }
+      });
+
+      if(unassignedCount > 0) {
+          labels.push("Sin Asignar");
+          data.push(unassignedCount);
+          bgColors.push('#fee2e2'); // red-50
+      }
+
+      if(assignChartInstance) {
+          assignChartInstance.destroy();
+      }
+
+      assignChartInstance = new Chart(ctx, {
+          type: 'bar',
+          data: {
+              labels: labels,
+              datasets: [{
+                  label: 'Asignaturas',
+                  data: data,
+                  backgroundColor: bgColors,
+                  borderWidth: 1,
+                  borderColor: '#ffffff'
+              }]
+          },
+          options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                  legend: { display: false },
+                  tooltip: {
+                      callbacks: {
+                          label: function(context) {
+                              return ' Asignaturas: ' + context.raw;
+                          }
+                      }
+                  }
+              },
+              scales: {
+                  y: {
+                      beginAtZero: true,
+                      ticks: {
+                          precision: 0
+                      }
+                  },
+                  x: {
+                      display: false // Ocultar nombres largos en el eje X para mantenerlo limpio
+                  }
+              }
+          }
+      });
+  }
+
+  function getRandomColor(str) {
+      let hash = 0;
+      for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash);
+      const c = (hash & 0x00FFFFFF).toString(16).toUpperCase();
+      return '#' + "00000".substring(0, 6 - c.length) + c;
+  }
+
+  function renderAssignmentList() {
+      const isManager = window.AUTH_DATA && (window.AUTH_DATA.role === 'Admin' || window.AUTH_DATA.role === 'Jefe de área');
+      
+      const globalActions = document.getElementById('assign-global-actions');
+      if (globalActions) globalActions.style.display = isManager ? 'flex' : 'none';
+      const bulkBar = document.getElementById('assign-bulk-bar');
+      if (bulkBar) bulkBar.style.display = isManager ? 'flex' : 'none';
+
+      const container = document.getElementById('assign-list');
+      container.innerHTML = '';
+
+      const term = document.getElementById('assign-search').value.toLowerCase();
+      const filtered = globalAssignments.filter(c => {
+          const isUnassigned = term === "sin asignar" && (!c.currentCoordName || c.currentCoordName.trim() === "");
+          return isUnassigned ||
+                 String(c.courseName).toLowerCase().includes(term) || 
+                 String(c.professor).toLowerCase().includes(term) ||
+                 String(c.program).toLowerCase().includes(term) ||
+                 String(c.currentCoordName).toLowerCase().includes(term);
+      });
+
+      document.getElementById('assign-count').innerText = `${filtered.length} REGISTROS`;
+
+      if(filtered.length === 0) {
+          container.innerHTML = `<div class="p-8 text-center text-gray-400">No se encontraron resultados para "${term}".</div>`;
+          return;
+      }
+
+      // Preparar options del select
+      let optionsHTML = `<option value="">-- Seleccionar Coordinador/Jefe --</option>`;
+      globalCoordinators.forEach(coord => {
+          // Remarcar si es jefe
+          const roleMarker = String(coord.role).toLowerCase().includes('jefe') ? '⭐ ' : '';
+          optionsHTML += `<option value="${coord.name}|${coord.email}">${roleMarker}${coord.name}</option>`;
+      });
+
+      filtered.forEach(c => {
+          const row = document.createElement('div');
+          row.className = "bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex flex-col xl:flex-row xl:items-center justify-between gap-4";
+          
+          let selectValue = "";
+          if(c.currentCoordName && c.currentCoordEmail) {
+             selectValue = `${c.currentCoordName}|${c.currentCoordEmail}`;
+             // Verificar si ya existe. (Ignorando la estrellita en la validación del value, porque el HTML busca coincidencias exactas del atributo value)
+             if(!optionsHTML.includes(`value="${selectValue}"`)) {
+                 optionsHTML += `<option value="${selectValue}" selected>${c.currentCoordName} (${c.currentCoordEmail})</option>`;
+             }
+          }
+
+          let assignHTML = '';
+          if (isManager) {
+              assignHTML = `
+              <div class="flex items-center gap-3 w-full xl:w-auto mt-2 xl:mt-0">
+                  <select id="select-coord-${c.rowIndex}" onchange="showSaveBtn(${c.rowIndex})" class="flex-1 xl:w-72 text-sm bg-gray-50 border border-gray-200 rounded-lg p-2 focus:ring-2 focus:ring-purple-500 outline-none">
+                      ${optionsHTML}
+                  </select>
+                  <button id="btn-save-coord-${c.rowIndex}" onclick="saveCoord(${c.rowIndex})" class="hidden bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg shadow-sm transition-colors min-w-[100px] text-sm flex items-center justify-center">
+                     Guardar
+                  </button>
+              </div>
+              `;
+          } else {
+              const displayName = (c.currentCoordName && c.currentCoordEmail) ? `${c.currentCoordName} (${c.currentCoordEmail})` : 'Sin asignar';
+              assignHTML = `
+              <div class="flex items-center gap-3 w-full xl:w-auto mt-2 xl:mt-0">
+                  <div class="flex-1 xl:w-72 text-sm bg-gray-50 border border-gray-200 rounded-lg p-2 shadow-inner text-gray-700 truncate" title="${displayName}">
+                     <i class="fa-solid fa-user-lock mr-2 text-gray-400"></i>${displayName}
+                  </div>
+              </div>
+              `;
+          }
+
+          row.innerHTML = `
+              <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-2 mb-1">
+                      <span class="text-[10px] bg-purple-50 text-purple-600 border border-purple-100 px-2 py-0.5 rounded font-bold uppercase transition-all whitespace-normal break-words">${c.program || 'N/A'}</span>
+                      <span class="text-[10px] text-gray-400 font-bold whitespace-nowrap"><i class="fa-solid fa-users mr-1"></i>${c.studentsCount || 0} alum.</span>
+                      <span class="text-[10px] text-gray-400 px-2">|</span>
+                      <span class="text-[10px] text-gray-400 whitespace-nowrap">F. ${c.rowIndex}</span>
+                  </div>
+                  <h3 class="font-bold text-gray-800 text-sm truncate mb-0.5" title="${c.courseName}">${c.courseName}</h3>
+                  <p class="text-xs text-gray-500 font-medium truncate"><i class="fa-regular fa-user mr-1"></i> ${c.professor}</p>
+              </div>
+              ${assignHTML}
+          `;
+          
+          container.appendChild(row);
+          
+          // Set selected value
+          if(selectValue && isManager) {
+             const sel = document.getElementById(`select-coord-${c.rowIndex}`);
+             if(sel) sel.value = selectValue;
+          }
+      });
+  }
+
+  function showSaveBtn(rowIndex) {
+      const btn = document.getElementById(`btn-save-coord-${rowIndex}`);
+      if(btn) {
+          btn.classList.remove('hidden');
+          // Update visual feedback on select
+          const sel = document.getElementById(`select-coord-${rowIndex}`);
+          sel.classList.add('border-purple-500', 'bg-purple-50');
+      }
+  }
+
+  function saveCoord(rowIndex) {
+      const sel = document.getElementById(`select-coord-${rowIndex}`);
+      const btn = document.getElementById(`btn-save-coord-${rowIndex}`);
+      if(!sel || !btn) return;
+
+      const val = sel.value;
+      let coordName = '', coordEmail = '';
+      if(val) {
+          const parts = val.split('|');
+          coordName = parts[0];
+          coordEmail = parts[1];
+      }
+
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+
+      google.script.run
+      .withSuccessHandler(res => {
+          if(handleMaintenanceResponse(res)) {
+             btn.disabled = false;
+             btn.innerHTML = 'Guardar';
+             return;
+          }
+          if(res && res.success) {
+              btn.innerHTML = '<i class="fa-solid fa-check"></i>';
+              btn.classList.replace('bg-purple-600', 'bg-green-500');
+              btn.classList.replace('hover:bg-purple-700', 'hover:bg-green-600');
+              sel.classList.remove('border-purple-500', 'bg-purple-50');
+              
+              // Actualizar Dashboard Automáticamente sin recargar todo
+              renderAssignmentDashboard();
+
+              setTimeout(() => {
+                  btn.classList.add('hidden');
+                  btn.disabled = false;
+                  btn.innerHTML = 'Guardar';
+                  btn.classList.replace('bg-green-500', 'bg-purple-600');
+                  btn.classList.replace('hover:bg-green-600', 'hover:bg-purple-700');
+              }, 2000);
+          } else {
+              alert("Error: " + (res?res.message:'Desconocido'));
+              btn.disabled = false;
+              btn.innerHTML = 'Guardar';
+          }
+      })
+      .withFailureHandler(e => {
+          alert("Error de conexión: " + e);
+          btn.disabled = false;
+          btn.innerHTML = 'Guardar';
+      })
+      .saveAssignment(rowIndex, coordName, coordEmail);
+  }
+
+  function populateBulkDropdowns() {
+      const progSelect = document.getElementById('bulk-program-select');
+      const coordSelect = document.getElementById('bulk-coord-select');
+      if(!progSelect || !coordSelect) return;
+
+      // 1. Llenar Programas únicos
+      const programs = [...new Set(globalAssignments.map(c => c.program || 'N/A'))].filter(p => p !== 'N/A').sort();
+      let pHTML = `<option value="">-- Seleccionar Programa --</option>`;
+      programs.forEach(p => { pHTML += `<option value="${p}">${p}</option>`; });
+      progSelect.innerHTML = pHTML;
+      
+      // Agregar el evento onchange para filtrar el buscador abajo
+      progSelect.addEventListener('change', function(e) {
+          const val = e.target.value;
+          document.getElementById('assign-search').value = val;
+          renderAssignmentList(); // Forzar el filtrado instantáneo
+      });
+
+      // 2. Llenar Coordinadores/Jefes
+      let cHTML = `<option value="">-- Seleccionar Responsable --</option>`;
+      globalCoordinators.forEach(coord => {
+          const roleMarker = String(coord.role).toLowerCase().includes('jefe') ? '⭐ ' : '';
+          cHTML += `<option value="${coord.name}|${coord.email}">${roleMarker}${coord.name}</option>`;
+      });
+      coordSelect.innerHTML = cHTML;
+  }
+
+  function saveBulkCoord() {
+      const progSelect = document.getElementById('bulk-program-select');
+      const coordSelect = document.getElementById('bulk-coord-select');
+      const btn = document.getElementById('btn-bulk-save');
+      
+      const prog = progSelect.value;
+      const coordVal = coordSelect.value;
+
+      if(!prog) return alert("Por favor, selecciona un Programa.");
+      if(!coordVal) return alert("Por favor, selecciona un Responsable.");
+
+      // Filtrar filas de este programa
+      const targets = globalAssignments.filter(c => c.program === prog);
+      if(targets.length === 0) return alert("No hay asignaturas para este programa.");
+
+      const confirmMsg = `¿Estás seguro de asignar masivamente ${targets.length} asignaturas del programa "${prog}"?\n\nEsta acción sobreescribirá las asignaciones actuales.`;
+      if(!confirm(confirmMsg)) return;
+
+      const rowIndices = targets.map(c => c.rowIndex);
+      const parts = coordVal.split('|');
+      const coordName = parts[0];
+      const coordEmail = parts[1];
+
+      btn.disabled = true;
+      const originalText = btn.innerHTML;
+      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Asignando...';
+
+      google.script.run
+      .withSuccessHandler(res => {
+          if(handleMaintenanceResponse(res)) {
+              btn.disabled = false;
+              btn.innerHTML = originalText;
+              return;
+          }
+          if(res && res.success) {
+              // Actualizar caché local
+              targets.forEach(t => {
+                  t.currentCoordName = coordName;
+                  t.currentCoordEmail = coordEmail;
+              });
+
+              // Limpiar selects
+              progSelect.value = '';
+              coordSelect.value = '';
+
+              // Feedback visual
+              btn.classList.replace('bg-purple-600', 'bg-green-500');
+              btn.classList.replace('hover:bg-purple-700', 'hover:bg-green-600');
+              btn.innerHTML = '<i class="fa-solid fa-check"></i> ¡Éxito!';
+
+              // Refrescar UI
+              renderAssignmentDashboard();
+              renderAssignmentList();
+
+              setTimeout(() => {
+                  btn.disabled = false;
+                  btn.innerHTML = originalText;
+                  btn.classList.replace('bg-green-500', 'bg-purple-600');
+                  btn.classList.replace('hover:bg-green-600', 'hover:bg-purple-700');
+              }, 3000);
+          } else {
+              alert("Error guardando masivo: " + (res?res.message:'Desconocido'));
+              btn.disabled = false;
+              btn.innerHTML = originalText;
+          }
+      })
+      .withFailureHandler(e => {
+          alert("Error de conexión: " + e);
+          btn.disabled = false;
+          btn.innerHTML = originalText;
+      })
+      .saveBulkAssignment(rowIndices, coordName, coordEmail);
+  }
+
+  // ==========================================
+  // FIN MÓDULO ASIGNACIÓN
+  // ==========================================
+
+  // --- SINCRONIZACIÓN Y DB (Fase 3.3) ---
+
+  function ejecutarImportacionBD() {
+      if(!confirm("¿Está seguro de Actualizar la BD desde la Matriz de Contrataciones?\n\nLa plataforma se bloqueará temporalmente para todos los usuarios. Esta operación borrará y reescribirá la información base en Todo Matr.")) return;
+      
+      showMaintenanceScreen("Descargando Matriz y Sincronizando...");
+      google.script.run
+          .withSuccessHandler(res => {
+              if(handleMaintenanceResponse(res)) return;
+              hideMaintenanceScreen();
+              if(res && res.error) {
+                  alert("Error de Sincronización: " + res.message);
+              } else {
+                  alert("¡Base de datos matricial actualizada y Acompañamiento sincronizado exitosamente!");
+                  window.location.reload(); 
+              }
+          })
+          .withFailureHandler(err => {
+              hideMaintenanceScreen();
+              alert("Fallo de conexión grave: " + err);
+          })
+          .runImportAndSyncWebApp();
+  }
+
+  function ejecutarSyncLMS() {
+      if(!confirm("¿Está seguro de Ejecutar/Actualizar Asignación?\n\nLa plataforma se bloqueará temporalmente para todos los usuarios. Esta operación actualizará los módulos Virtual, Presencial y Acompañamiento simultáneamente.")) return;
+      
+      showMaintenanceScreen("Sincronizando Plataformas LMS...");
+      google.script.run
+          .withSuccessHandler(res => {
+              if(handleMaintenanceResponse(res)) return;
+              hideMaintenanceScreen();
+              if(res && res.error) {
+                  alert("Error de Sincronización: " + res.message);
+              } else {
+                  alert("¡Plataformas LMS sincronizadas exitosamente!");
+              }
+          })
+          .withFailureHandler(err => {
+              hideMaintenanceScreen();
+              alert("Fallo de conexión grave: " + err);
+          })
+          .runSyncAllWebApp();
   }
 
   function getCourseVigesimal(course) {
@@ -368,10 +934,20 @@
      // Let's use GLOBAL for the top stats to give a big picture, or filtered? 
      // Requirement: "un resumen de las cantidades de asignaturas, cantidad de asigaturas asignadas..."
      // Usually dashboard headers show total status. Let's use globalData.courses for stats unless filtering is active?
-     // Let's stick to globalData.courses for the main dashboard stats to render them once or always based on all data.
      // Actually, if I filter, I might want to see stats for that professor. 
      // Let's pass 'filtered' to renderDashboardStats so it updates dynamically!
      renderDashboardStats(filtered);
+     
+     const isGuest = window.AUTH_DATA && window.AUTH_DATA.isGuest;
+     if (isGuest) {
+          container.innerHTML = `<div class="p-10 text-center text-gray-500 font-medium bg-gray-50 rounded-2xl border border-dashed border-gray-200 mt-4 md:col-span-2 lg:col-span-3 w-full">
+             <i class="fa-solid fa-lock text-4xl mb-4 text-gray-300 block"></i>
+             Acceso restringido al detalle de asignaturas.<br><span class="text-sm mt-2 block max-w-lg mx-auto leading-relaxed">Usted se encuentra en modo <b>Invitado</b>. Su visualización está limitada estrictamente a los indicadores métricos globales de avance para fines de supervisión general. No cuenta con permisos para inspeccionar o interactuar con el registro individual de asignaturas.</span>
+          </div>`;
+          const searchInput = document.getElementById('search-input');
+          if (searchInput) searchInput.disabled = true;
+          return;
+     }
      
      filtered.forEach(c => {
         const row = document.createElement('div');
@@ -417,7 +993,8 @@
         row.innerHTML = `
            <div class="flex-1 min-w-0">
               <h3 class="font-bold text-gray-800 text-sm group-hover:text-red-700 transition-colors truncate mb-0.5">${c.courseName}</h3>
-              <p class="text-xs text-gray-500 font-medium truncate"><i class="fa-regular fa-user mr-1"></i> ${c.professor}</p>
+              <p class="text-xs text-gray-500 font-medium truncate mb-1"><i class="fa-regular fa-user mr-1"></i> ${c.professor}</p>
+              <p class="text-[10px] text-blue-600 font-bold truncate tracking-wide"><i class="fa-solid fa-user-shield mr-1 text-blue-400"></i> ${c.coordName ? c.coordName.toUpperCase() : 'SIN ASIGNAR'}</p>
            </div>
            
            <div class="flex items-center gap-3 border-l border-r border-gray-100 px-4">
@@ -430,8 +1007,8 @@
            </div>
            
            <div class="flex gap-2">
-              <a href="${c.urlAP || '#'}" target="_blank" onclick="logAccess('AP')" class="${c.urlAP?'':'opacity-50 pointer-events-none'} text-xs bg-blue-50 text-blue-600 px-2 py-1.5 rounded font-bold hover:bg-blue-100 transition-colors" title="Aula Virtual AP"><i class="fa-solid fa-globe"></i></a>
-              <a href="${c.urlUSMP || '#'}" target="_blank" onclick="logAccess('USMP')" class="${c.urlUSMP?'':'opacity-50 pointer-events-none'} text-xs bg-red-50 text-red-600 px-2 py-1.5 rounded font-bold hover:bg-red-100 transition-colors" title="Aula Virtual USMP"><i class="fa-solid fa-university"></i></a>
+              <a href="${c.links.AP.url || '#'}" target="_blank" onclick="logAccess('AP')" class="${c.links.AP.url?'':'opacity-50 pointer-events-none'} text-xs bg-blue-50 text-blue-600 px-2 py-1.5 rounded font-bold hover:bg-blue-100 transition-colors" title="Aula Virtual AP"><i class="fa-solid fa-globe"></i></a>
+              <a href="${c.links.USMP.url || '#'}" target="_blank" onclick="logAccess('USMP')" class="${c.links.USMP.url?'':'opacity-50 pointer-events-none'} text-xs bg-red-50 text-red-600 px-2 py-1.5 rounded font-bold hover:bg-red-100 transition-colors" title="Aula Virtual USMP"><i class="fa-solid fa-university"></i></a>
               <button class="text-xs font-bold text-gray-400 group-hover:text-gray-600 px-2 py-1.5 hover:bg-gray-100 rounded transition-colors"><i class="fa-solid fa-chevron-right"></i></button>
            </div>
         `;
@@ -456,8 +1033,8 @@
      }
      document.getElementById('detail-start-date').innerText = dateDisplay;
 
-     setupLink('link-ap', c.urlAP, c.codeAP);
-     setupLink('link-usmp', c.urlUSMP, c.codeUSMP);
+     setupLink('link-ap', c.links.AP.url, c.links.AP.code);
+     setupLink('link-usmp', c.links.USMP.url, c.links.USMP.code);
      
      // New Unified Tabs
      renderUnifiedTabs();
@@ -621,8 +1198,15 @@
              [1,2,3,4].forEach(n => {
                 const active = (val==n);
                 const cls = active ? (n<=2?'bg-red-500 text-white border-red-500':'bg-green-500 text-white border-green-500') : 'bg-white text-gray-400 border-gray-200 hover:border-gray-300';
-                const click = isLocked ? '' : `onclick="save('${c.id}',${n},this)"`;
-                btns += `<button ${click} class="w-7 h-7 rounded text-xs font-bold border ${cls}">${n}</button>`;
+                
+                // Si la semana está bloqueada, o el usuario es invitado, desactiva onClick
+                const isGuest = window.AUTH_DATA && window.AUTH_DATA.isGuest;
+                const click = (isLocked || isGuest) ? '' : `onclick="save('${c.id}',${n},this)"`;
+                
+                // Opacidad si es invitado y no está activo
+                const extraCls = (isGuest && !active) ? 'opacity-50 cursor-not-allowed' : '';
+
+                btns += `<button ${click} class="w-7 h-7 rounded text-xs font-bold border ${cls} ${extraCls}">${n}</button>`;
              });
 
              const row = document.createElement('div');
@@ -664,14 +1248,35 @@
      
      const progress = items.length ? Math.round((filled/items.length)*100) : 0;
      
-     if(btnCongrat) btnCongrat.disabled = !(progress===100 && low===0);
-     if(btnReport) btnReport.disabled = !(low>0);
+     const isGuest = window.AUTH_DATA && window.AUTH_DATA.isGuest;
+
+     if(btnCongrat) {
+         if (isGuest) {
+             btnCongrat.disabled = true;
+             btnCongrat.classList.add('opacity-50', 'cursor-not-allowed');
+         } else {
+             btnCongrat.disabled = !(progress===100 && low===0);
+             btnCongrat.classList.remove('opacity-50', 'cursor-not-allowed');
+         }
+     }
+     if(btnReport) {
+         if (isGuest) {
+             btnReport.disabled = true;
+             btnReport.classList.add('opacity-50', 'cursor-not-allowed');
+         } else {
+             btnReport.disabled = !(low>0);
+             btnReport.classList.remove('opacity-50', 'cursor-not-allowed');
+         }
+     }
   }
 
   function save(id, val, btn) {
       // UI Immediate Feedback (Traffic Light & Buttons)
       const sibs = btn.parentElement.children;
-      for(let s of sibs) s.className = "w-7 h-7 rounded text-xs font-bold border bg-white text-gray-400 border-gray-200";
+      for(let s of sibs) {
+          s.className = "w-7 h-7 rounded text-xs font-bold border bg-white text-gray-400 border-gray-200";
+          s.disabled = true; // Bloquear todos los botones de esta fila
+      }
       btn.className = "w-7 h-7 rounded text-xs font-bold border " + (val<=2?'bg-red-500 text-white border-red-500':'bg-green-500 text-white border-green-500');
       document.getElementById(`tl-${id}`).className = "traffic-light " + (val<=2?'tl-red':'tl-green');
       
@@ -687,11 +1292,12 @@
           lbl.className = `text-[10px] font-bold uppercase ${col} min-w-[60px] text-right hidden md:block`;
       }
       
-      // SHOW SAVE INDICATOR
+      // Bloqueo global opcional: Mostrar mensaje de Guardando
+      // Bloqueo global: Mostrar overlay de Guardando
       const indicator = document.getElementById('save-indicator');
       if(indicator) {
-          indicator.classList.remove('hidden');
-          indicator.classList.remove('opacity-0', 'translate-y-4'); // Reset animation state
+          indicator.innerHTML = '<div class="bg-white text-gray-800 text-base font-bold px-8 py-5 rounded-2xl shadow-2xl flex items-center gap-4"><i class="fa-solid fa-spinner fa-spin text-2xl text-red-600"></i> Guardando cambios, por favor espere...</div>';
+          indicator.classList.remove('hidden', 'opacity-0');
       }
 
       google.script.run.withSuccessHandler(res=>{
@@ -715,24 +1321,43 @@
            renderUnifiedTabs();
            updateActionButtons(); // Update buttons immediately
            
-           // HIDE SAVE INDICATOR
+           // HIDE SAVE INDICATOR & REHABILITAR BOTONES
+           for(let s of sibs) s.disabled = false;
            if(indicator) {
-               // Optional: Show "Saved" state? For now just hide after delay
+               indicator.innerHTML = '<div class="bg-white text-gray-800 text-base font-bold px-8 py-5 rounded-2xl shadow-2xl flex items-center gap-4"><i class="fa-solid fa-check text-green-500 text-2xl"></i> ¡Guardado exitosamente!</div>';
                setTimeout(() => {
-                   indicator.classList.add('opacity-0', 'translate-y-4'); // Animate out
-                   setTimeout(() => indicator.classList.add('hidden'), 300); // Hide after transition
-               }, 600); // Keep visible briefly
+                   indicator.classList.add('opacity-0'); // Animate out
+                   setTimeout(() => {
+                       indicator.classList.add('hidden');
+                       indicator.innerHTML = '';
+                   }, 300); // Hide after transition
+               }, 1000); // Reduce time holding screen
            }
 
       }).withFailureHandler((e) => {
            alert("Error al guardar: " + e);
-           if(indicator) indicator.classList.add('hidden');
+           for(let s of sibs) s.disabled = false;
+           if(indicator) {
+               indicator.classList.add('opacity-0');
+               setTimeout(() => indicator.classList.add('hidden'), 300);
+           }
       }).saveGrade(currentCourse.rowIndex, id, val, currentWeekId, currentModule);
   }
   
   function openEmailModal(t){ 
+      if(window.AUTH_DATA && window.AUTH_DATA.isGuest) {
+          alert("Acceso denegado: Los invitados no tienen permiso para enviar correos.");
+          return;
+      }
+
       document.getElementById('email-modal').classList.remove('hidden'); 
-      document.getElementById('email-to').value = currentCourse.email1; 
+      
+      // Concatenar ambos correos si existen
+      let toEmails = currentCourse.email1;
+      if (currentCourse.email2 && currentCourse.email2.trim() !== '') {
+          toEmails += ',' + currentCourse.email2;
+      }
+      document.getElementById('email-to').value = toEmails; 
       
       const tpl = getTemplate(t, currentCourse, currentWeekId);
       document.getElementById('email-subject').value = tpl.subject;

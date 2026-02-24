@@ -1,10 +1,18 @@
+function uiAlertSafe(msg) {
+  try {
+    SpreadsheetApp.getUi().alert(msg);
+  } catch(e) {
+    console.log("WebApp Alert Bypass:", msg);
+  }
+}
+
 function importarDatosATodoMatr() {
   var ssActual = SpreadsheetApp.getActiveSpreadsheet();
 
   // 1. CONFIGURACIÓN: Leemos C1 y D1 desde la pestaña "Hoja de rutas"
   var hojaConfig = ssActual.getSheetByName("Hoja de rutas");
   if (!hojaConfig) {
-    SpreadsheetApp.getUi().alert('Error: No se encontró la pestaña de configuración "Hoja de rutas".');
+    uiAlertSafe('Error: No se encontró la pestaña de configuración "Hoja de rutas".');
     return;
   }
 
@@ -20,7 +28,7 @@ function importarDatosATodoMatr() {
 
   // Validaciones básicas
   if (!idOrigen || !nombreHojaOrigen) {
-    SpreadsheetApp.getUi().alert('Por favor, revisa C1 y D1 en "Hoja de rutas". Están vacíos.');
+    uiAlertSafe('Por favor, revisa C1 y D1 en "Hoja de rutas". Están vacíos.');
     return;
   }
 
@@ -30,7 +38,7 @@ function importarDatosATodoMatr() {
     var hojaOrigen = ssOrigen.getSheetByName(nombreHojaOrigen);
 
     if (!hojaOrigen) {
-      SpreadsheetApp.getUi().alert('No se encontró la pestaña llamada "' + nombreHojaOrigen + '" en el archivo de origen.');
+      uiAlertSafe('No se encontró la pestaña llamada "' + nombreHojaOrigen + '" en el archivo de origen.');
       return;
     }
 
@@ -42,7 +50,7 @@ function importarDatosATodoMatr() {
     var filaInicio = 2; 
     
     if (ultimaFila < filaInicio) {
-      SpreadsheetApp.getUi().alert('La hoja de origen no tiene datos suficientes.');
+      uiAlertSafe('La hoja de origen no tiene datos suficientes.');
       return;
     }
     
@@ -75,9 +83,9 @@ function importarDatosATodoMatr() {
     // Pegar AF en la Columna W (Columna 23)
     hojaDestino.getRange(2, 23, numFilas, 1).setValues(datosAF);
 
-    SpreadsheetApp.getUi().alert('Importación completada en "Todo Matr".');
+    uiAlertSafe('Importación completada en "Todo Matr".');
 
   } catch (e) {
-    SpreadsheetApp.getUi().alert('Error al importar: ' + e.message);
+    uiAlertSafe('Error al importar: ' + e.message);
   }
 }

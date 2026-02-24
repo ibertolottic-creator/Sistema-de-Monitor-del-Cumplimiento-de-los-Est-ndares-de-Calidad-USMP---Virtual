@@ -5,13 +5,20 @@
 
 const SHEET_MAP = {
   'VIRTUAL': "Sistema de gestión del aprendizaje (LMS)- virtual",
-  'PRESENCIAL': "Sistema de gestión del aprendizaje (LMS)- presencial"
+  'PRESENCIAL': "Sistema de gestión del aprendizaje (LMS)- presencial",
+  'ASIGNACION': "Asignación de coordinador"
 };
 
-const ADMIN_EMAIL = Session.getActiveUser().getEmail(); 
-const ADDITIONAL_ADMINS = ["admin2@usmp.pe", "jefe@usmp.pe"]; 
+const SHEET_COORDINATORS = "Datos de los coordinadores";
+
+// Eliminamos la anulación de sesión dinámica global para evitar vulnerabilidades de permisos.
+// Ahora la fuente de la verdad para los permisos es EXCLUSIVAMENTE la hoja "Datos de los coordinadores".
 
 function doGet() {
+  const maintenance = PropertiesService.getScriptProperties().getProperty('MAINTENANCE_MODE');
+  if(maintenance === 'true') {
+      return HtmlService.createHtmlOutput('<div style="font-family:sans-serif;text-align:center;margin-top:50px;"><h2>El sistema se encuentra en mantenimiento (Sincronizando Bases de Datos).</h2><p>Por favor, intente ingresar en unos minutos.</p></div>');
+  }
   const tpl = HtmlService.createTemplateFromFile('Index');
   return tpl.evaluate()
       .setTitle('Sistema de Monitoreo del Cumplimiento de los Estándares de Calidad USMP')
@@ -41,6 +48,52 @@ function getHeaders(sheet) {
   return { rowIndex: 0, values: range[0] };
 }
 
+// --- AUTENTICACIÓN Y ROLES (Fase 3) ---
+function getGlobalSessionData() {
+  const userEmail = Session.getActiveUser().getEmail();
+  let role = 'Invitado';
+  let name = userEmail;
+  let isGuest = true;
+
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(SHEET_COORDINATORS);
+    
+    if (sheet) {
+      const lastRow = sheet.getLastRow();
+      if (lastRow >= 2) {
+        // La fila 1 es el encabezado, los datos inician en la fila 2
+        // Cols: F (6)=Rol, G (7)=Correo, J (10)=Nombres
+        const data = sheet.getRange(2, 6, lastRow - 1, 5).getValues(); // Leemos desde col F hasta J. (indices: 0=F, 1=G, 4=J)
+        
+        for (let i = 0; i < data.length; i++) {
+          const rowEmail = String(data[i][1] || '').trim().toLowerCase();
+          if (rowEmail === userEmail.toLowerCase()) {
+            role = String(data[i][0] || '').trim(); // Col F
+            name = String(data[i][4] || '').trim(); // Col J
+            isGuest = false;
+            break;
+          }
+        }
+      }
+    }
+
+    // Admins overrides eliminados por vulnerabilidad de escalamiento de privilegios.
+    // Solo se valida contra la hoja "Datos de los coordinadores".
+
+    return { 
+      success: true, 
+      userEmail: userEmail, 
+      name: name, 
+      role: role, 
+      isGuest: isGuest 
+    };
+  } catch(e) {
+    return { success: false, message: e.toString(), isGuest: true, userEmail: userEmail };
+  }
+}
+
+
 // --- OBTENER DATOS (Módulo Dinámico) ---
 function getInitialData(moduleKey) {
   try {
@@ -63,14 +116,16 @@ function getInitialData(moduleKey) {
     // However, existing code processed from I=2 (Row 3).
     // If header is at Row 4, data must be at Row 5+.
     
-    // Safety: Start processing from the row AFTER the header row.
-    const startRowIndex = headerObj.rowIndex + 1; 
+    // Safety: Start processing from the row AFTER the description row.
+    // El encabezado está en la fila 1 (index 0). La fila 2 tiene descripciones.
+    // Por lo tanto, los datos inician en headerObj.rowIndex + 2.
+    const startRowIndex = headerObj.rowIndex + 2; 
     
     // Leer valores desde la fila de datos
     // READ ALL from Row 1 to be safe, then map
     const allValues = sheet.getRange(1, 1, lastRow, lastCol).getValues();
     
-    // Leer enlaces (L=12, M=13)
+    // Leer enlaces (L=12, M=13 en la hoja, pero para RichTextRange es 12 y 2 columnas)
     let urlRichText = [];
     try {
       urlRichText = sheet.getRange(1, 12, lastRow, 2).getRichTextValues();
@@ -79,10 +134,8 @@ function getInitialData(moduleKey) {
     }
     
     const userEmail = Session.getActiveUser().getEmail();
-    let role = 'COORDINATOR';
-    if (userEmail === ADMIN_EMAIL || ADDITIONAL_ADMINS.includes(userEmail)) {
-      role = 'ADMIN';
-    }
+    const sessionData = getGlobalSessionData();
+    const role = sessionData.role;
 
     const courses = [];
     let totalCoursesCount = 0;
@@ -96,9 +149,11 @@ function getInitialData(moduleKey) {
             totalCoursesCount++; 
             
             const coordEmail = String(row[18] || '').trim(); // Col S
+            const coordName = String(row[17] || '').trim(); // Col R
             
-            // Filtro de seguridad
-            if (role !== 'ADMIN') {
+            // Filtro de seguridad estricto (Jefes y Coordinadores regulares ven solo lo suyo)
+            // Invitados y Admins ven todo (los Invitados solo verán el resumen por bloqueo en el frontend)
+            if (role !== 'Admin' && role !== 'Invitado') {
                if (coordEmail.toLowerCase() !== userEmail.toLowerCase()) continue; 
             }
     
@@ -131,48 +186,54 @@ function getInitialData(moduleKey) {
         
         try {
            if (urlRichText && urlRichText.length > i) {
-              const rowRich = urlRichText[i]; // rowRich[0] is col L, rowRich[1] is col M
+              const rowRich = urlRichText[i]; // rowRich[0] is col L (AP), rowRich[1] is col M (USMP).
               
-              const cellL = rowRich[0]; 
-              const cellM = rowRich[1];
+              const cellL = rowRich ? rowRich[0] : null; 
+              const cellM = rowRich ? rowRich[1] : null;
               
               if (cellL) {
                  codeAP = cellL.getText() || '';
                  urlAP = cellL.getLinkUrl() || '';
-                 if(!urlAP && codeAP.startsWith('http')) urlAP = codeAP;
               }
+              // Fallback directo a allValues
+              const rawL = String(row[11] || '').trim(); 
+              if (!urlAP && rawL.startsWith('http')) { urlAP = rawL; codeAP = rawL; }
+              if (!urlAP && rawL.length > 5 && !rawL.startsWith('http')) { urlAP = 'https://' + rawL; codeAP = rawL; }
               
               if (cellM) {
                  codeUSMP = cellM.getText() || '';
                  urlUSMP = cellM.getLinkUrl() || '';
-                 if(!urlUSMP && codeUSMP.startsWith('http')) urlUSMP = codeUSMP;
               }
+              // Fallback directo a allValues
+              const rawM = String(row[12] || '').trim();
+              if (!urlUSMP && rawM.startsWith('http')) { urlUSMP = rawM; codeUSMP = rawM; }
+              if (!urlUSMP && rawM.length > 5 && !rawM.startsWith('http')) { urlUSMP = 'https://' + rawM; codeUSMP = rawM; }
            }
         } catch(e) { console.warn("Link error row " + i, e); }
 
-        // Correos Docente (H=7, I=8)
+         // Correos Docente (H=7, I=8)
         const email1 = String(row[7] || '').trim();
         const email2 = String(row[8] || '').trim();
 
-        courses.push({
-          rowIndex: i + 1,
-          grade: String(row[1] || ''), 
-          program: String(row[2] || ''),      
-          courseName: String(row[4] || ''),   
-          professor: String(row[6] || ''),
-          email1: email1,
-          email2: email2,
-          phoneNumber: String(row[9] || '').trim(), 
-          coordinator: coordEmail,
-          
-          codeAP: codeAP, urlAP: urlAP,
-          codeUSMP: codeUSMP, urlUSMP: urlUSMP,
-          
-          studentsCount: String(row[14] || '0'), 
-          startDate: startDateStr,
-          grades: grades,
-          timestamps: timestamps
-        });
+            courses.push({
+               rowIndex: i + 1, // 1-indexed for Apps Script (i is 0-indexed where 0 is Row 1)
+               courseName: String(row[4] || '').trim(), // Col E
+               professor: String(row[6] || '').trim(), // Col G
+               studentsCount: String(row[14] || '0').trim(), // Col O (Index 14) "N° ESTUDIANTES"
+               email1: String(row[7] || '').trim(), // Col H
+               email2: String(row[8] || '').trim(), // Col I
+               phoneNumber: String(row[9] || '').trim(), // Col J
+               startDate: startDateStr,      // Col T (Index 19)
+               program: String(row[2] || '').trim(), // Col C (Index 2)
+               coordName: coordName,         // Col R (Index 17)
+               coordEmail: coordEmail,       // Col S (Index 18)
+               links: {
+                 AP: { code: codeAP, url: urlAP },
+                 USMP: { code: codeUSMP, url: urlUSMP }
+               },
+               grades: grades,
+               timestamps: timestamps
+            });
       } catch (errRow) {
         Logger.log("Error en fila " + (i+1) + ": " + errRow);
         // Continuamos con la siguiente fila, no detenemos todo
@@ -186,8 +247,140 @@ function getInitialData(moduleKey) {
   }
 }
 
+// --- MÓDULO: ASIGNACIÓN DE CARGA (Fase 3) ---
+function getAssignmentData() {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    
+    // 1. Obtener lista de posibles coordinadores
+    const coordSheet = ss.getSheetByName(SHEET_COORDINATORS);
+    if (!coordSheet) throw new Error("No se encontró la hoja: " + SHEET_COORDINATORS);
+    
+    const coordLastRow = coordSheet.getLastRow();
+    const coordinators = [];
+    if (coordLastRow >= 2) {
+       // Cols: F (6)=Rol, G (7)=Correo, J (10)=Nombres
+       const data = coordSheet.getRange(2, 6, coordLastRow - 1, 5).getValues();
+       for(let i=0; i<data.length; i++){
+          const rol = String(data[i][0]).trim().toLowerCase();
+          const email = String(data[i][1]).trim();
+          const nombre = String(data[i][4]).trim();
+          // Filtrar: Jefes y Coordinadores (no invitados)
+          if((rol.includes('coordinador') || rol.includes('jefe')) && email && nombre) {
+              coordinators.push({ name: nombre, email: email, role: rol });
+          }
+       }
+    }
+
+    // 2. Obtener lista de asignaturas desde la hoja de "Asignación de coordinador"
+    const asignSheet = ss.getSheetByName(SHEET_MAP['ASIGNACION']);
+    if (!asignSheet) throw new Error("No se encontró la hoja de Asignación: " + SHEET_MAP['ASIGNACION']);
+
+    const asignLastRow = asignSheet.getLastRow();
+    if (asignLastRow < 3) return { courses: [], coordinators: coordinators }; // Asumiendo datos inician fila 3
+
+    // Asumimos encabezados en fila 1 y/o 2. Leemos todo y mapeamos
+    // Como las demás hojas, Col R = Index 17 (Nombre), Col S = Index 18 (Email)
+    // Curso = Col E (Index 4), Docente = Col G (Index 6), Modalidad/Tipo = Col C (Index 2)
+    const allValues = asignSheet.getRange(1, 1, asignLastRow, 22).getValues();
+    
+    // Para Asignación, ignoramos la cabecera (Fila 1). Los datos inician en la Fila 2.
+    // getHeaders retorna rowIndex 0 para Fila 1. 
+    const startRowIndex = 1; // Fila 2 en array (índice 1)
+
+    const courses = [];
+    for (let i = startRowIndex; i < allValues.length; i++) {
+        const row = allValues[i];
+        if (!row[4]) continue; // Saltar vacíos
+
+        courses.push({
+            rowIndex: i + 1,
+            courseName: String(row[4] || ''),   
+            professor: String(row[6] || ''),
+            program: String(row[2] || ''),       // Col C
+            studentsCount: String(row[14] || '0'), // Col O
+            currentCoordName: String(row[17] || ''), // R
+            currentCoordEmail: String(row[18] || '') // S
+        });
+    }
+
+    // Retornamos todo al front
+    return {
+       courses: courses,
+       coordinators: coordinators
+    };
+
+  } catch(e) {
+    return { error: true, message: "Error cargando asignaciones: " + e.toString() };
+  }
+}
+
+function saveAssignment(rowIndex, coordName, coordEmail) {
+   const maintenance = PropertiesService.getScriptProperties().getProperty('MAINTENANCE_MODE');
+   if(maintenance === 'true') {
+       return { success: false, maintenance: true, message: "Sistema en mantenimiento." };
+   }
+
+   const lock = LockService.getScriptLock();
+   try {
+     lock.waitLock(10000); 
+
+     const ss = SpreadsheetApp.getActiveSpreadsheet();
+     const sheet = ss.getSheetByName(SHEET_MAP['ASIGNACION']);
+     if(!sheet) throw new Error("Hoja no encontrada.");
+
+     // Actualizar Col R (18) y Col S (19)
+     sheet.getRange(rowIndex, 18).setValue(coordName);
+     sheet.getRange(rowIndex, 19).setValue(coordEmail);
+
+     return { success: true };
+   } catch(e) {
+     return { success: false, message: e.toString() };
+   } finally {
+     lock.releaseLock();
+   }
+}
+
+function saveBulkAssignment(rowIndices, coordName, coordEmail) {
+   const maintenance = PropertiesService.getScriptProperties().getProperty('MAINTENANCE_MODE');
+   if(maintenance === 'true') {
+       return { success: false, maintenance: true, message: "Sistema en mantenimiento." };
+   }
+
+   const lock = LockService.getScriptLock();
+   try {
+     lock.waitLock(15000); 
+
+     const ss = SpreadsheetApp.getActiveSpreadsheet();
+     const sheet = ss.getSheetByName(SHEET_MAP['ASIGNACION']);
+     if(!sheet) throw new Error("Hoja no encontrada.");
+
+     if(!Array.isArray(rowIndices) || rowIndices.length === 0) {
+         throw new Error("No hay filas para actualizar.");
+     }
+
+     // Para ser eficientes y seguros con Google Sheets, iteramos las filas.
+     // Podría optimizarse con getRangeList si están muy separados, pero iterar localmente en apps script para <1000 filas es muy rápido.
+     rowIndices.forEach(rowIndex => {
+         sheet.getRange(rowIndex, 18).setValue(coordName);
+         sheet.getRange(rowIndex, 19).setValue(coordEmail);
+     });
+
+     return { success: true, count: rowIndices.length };
+   } catch(e) {
+     return { success: false, message: e.toString() };
+   } finally {
+     lock.releaseLock();
+   }
+}
+
 // --- GUARDAR (Con LockService) ---
 function saveGrade(rowIndex, criteriaId, value, weekKey, moduleKey) {
+  const maintenance = PropertiesService.getScriptProperties().getProperty('MAINTENANCE_MODE');
+  if(maintenance === 'true') {
+      return { success: false, maintenance: true, message: "Sistema en mantenimiento." };
+  }
+
   const lock = LockService.getScriptLock();
   try {
     // Esperar hasta 10 segundos por el lock (para concurrencia)
@@ -355,7 +548,10 @@ function trackAccess(rowIndex, type, moduleKey) {
     const headers = headerObj.values;
 
     const userEmail = Session.getActiveUser().getEmail();
-    const isAdmin = (userEmail === ADMIN_EMAIL || ADDITIONAL_ADMINS.includes(userEmail));
+    
+    // Obtener información exacta de la hoja de coordinadores para analytics
+    const sessionResponse = getGlobalSessionData();
+    const isAdmin = (sessionResponse.role === 'Admin' || sessionResponse.role === 'Jefe de área');
     
     // Determinar nombre de columna destino
     let targetHeader = '';
@@ -491,6 +687,61 @@ function trackInteraction(rowIndex, headerName, moduleKey) {
   }
 }
 // END OF CODE.GS
+
+// ==========================================
+// MÓDULO: SINCRONIZACIÓN Y MANTENIMIENTO (Fase 3.3)
+// ==========================================
+
+function runSyncAllWebApp() {
+  const lock = LockService.getScriptLock();
+  const props = PropertiesService.getScriptProperties();
+  try {
+     // Prevenir doble ejecución de mantenimiento
+     lock.waitLock(30000); 
+     props.setProperty('MAINTENANCE_MODE', 'true');
+
+     const ss = SpreadsheetApp.getActiveSpreadsheet();
+     const mockUi = { alert: function(m){ console.log("Sync Alert:", m); } };
+     
+     // Llamar secuencialmente a SincronizacionIntern.gs
+     ejecutarSincronizacion(ss, mockUi, "Asignación de coordinador", "Sistema de gestión del aprendizaje (LMS)- virtual", "VIRTUAL");
+     ejecutarSincronizacion(ss, mockUi, "Asignación de coordinador", "Sistema de gestión del aprendizaje (LMS)- presencial", "PRESENCIAL");
+     ejecutarSincronizacion(ss, mockUi, "Asignación de coordinador", "Acompañamiento al desempeño docente Pedagógico", "TODO");
+     
+     return { success: true };
+  } catch(e) {
+     return { error: true, message: "Fallo durante la sincronización: " + e.toString() };
+  } finally {
+     props.deleteProperty('MAINTENANCE_MODE');
+     lock.releaseLock();
+  }
+}
+
+function runImportAndSyncWebApp() {
+  const lock = LockService.getScriptLock();
+  const props = PropertiesService.getScriptProperties();
+  try {
+     // Prevenir doble ejecución de mantenimiento
+     lock.waitLock(30000); 
+     props.setProperty('MAINTENANCE_MODE', 'true');
+
+     const ss = SpreadsheetApp.getActiveSpreadsheet();
+     const mockUi = { alert: function(m){ console.log("Import Alert:", m); } };
+
+     // 1. Llamar a ImportacionExterna.gs
+     importarDatosATodoMatr();
+
+     // 2. Llamar SincronizacionIntern.gs para armar la base en Acompañamiento
+     ejecutarSincronizacion(ss, mockUi, "Asignación de coordinador", "Acompañamiento al desempeño docente Pedagógico", "TODO");
+     
+     return { success: true };
+  } catch(e) {
+     return { error: true, message: "Fallo durante la importación/sincronización: " + e.toString() };
+  } finally {
+     props.deleteProperty('MAINTENANCE_MODE');
+     lock.releaseLock();
+  }
+}
 function include(filename) {
   return HtmlService.createHtmlOutputFromFile(filename).getContent();
 }
