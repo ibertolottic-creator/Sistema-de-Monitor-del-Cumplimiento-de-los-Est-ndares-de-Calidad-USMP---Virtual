@@ -67,6 +67,12 @@ Este archivo contiene la lógica del servidor. A continuación, cada función ex
         *   **Extracción de Enlaces (Robustez):** Intenta extraer la URL mediante `getRichTextValues()`. Si falla u obtiene texto plano (fallback), emplea algoritmos para interpretar columnas M/N (12/13) inyectando prefijos "https://" al vuelo si están ausentes, garantizando el despliegue de los botones AP/USMP en el Frontend.
     4.  **Retorno:** Objeto JSON con `courses`, `userEmail` y `role`. (Nota: Los invitados reciben toda la carga pero son restringidos visualmente en el frontend).
 
+### `getSpreadsheetInfo()`
+*   **Función:** API auxiliar para contexto visual y comunicaciones (Fase 3.4).
+*   **Lógica:** 
+    *   Ejecuta `SpreadsheetApp.getActiveSpreadsheet().getName()`.
+    *   **Propósito:** Provee al Frontend el nombre del archivo en tiempo real para identificar la sede conectada ("PREGRADO" o "POSGRADO") y actuar en consecuencia (mostrar Insignias en el Home y armar el correo de contacto adecuado para la sede virtual conectada).
+
 ### `saveGrade(rowIndex, criteriaId, value, weekKey, moduleKey)`
 *   **Función:** Guarda una nota y audita la acción.
 *   **Lógica Compleja:**
@@ -106,6 +112,8 @@ Este archivo contiene la lógica del servidor. A continuación, cada función ex
 ### `JS_Client.html`
 Controlador de la interfaz.
 
+*   **`DOMContentLoaded` (Nuevo en 3.4):**
+    *   Ejecuta `fetchSpreadsheetInfo()` apenas carga la UI. Solicita al backend el nombre del documento e inserta un "Badge" o Insignia en la pantalla de Inicio de color azul o morado indicando formalmente si se consulta datos de Pregrado o Posgrado. Luego guarda esa variable de entorno (`window.SS_NAME`).
 *   **`loadModule(key)`:**
     *   Establece la variable global `currentModule`.
     *   Define `CURRENT_CRITERIA_MAP` eligiendo entre la configuración Virtual o Presencial.
@@ -132,6 +140,13 @@ Módulo de analítica.
 *   **`logInteraction(channel, type)`:**
     *   Recibe canal ('email', 'wa') y tipo ('felicita', 'reporta').
     *   Combina estos datos con la semana actual (`currentWeekId`) para determinar el encabezado destino (ej. `wa_felicita_s2`).
+
+### Envíos y Notificaciones (`View_Modal.html` / Correo)
+Este sistema emplea el modal dinámico para crear las comunicaciones en base a Templates.
+*   **Correos Masivos y Tracking (Fase 3.4):**
+    *   Cuando el usuario activa un evento de comunicación (Click en Email de la semana), se despliega el modal.
+    *   **Lógica Inteligente de Destinatarios:** La función `openEmailModal()` no solo enlaza el correo del Docente 1 y Docente 2 alojado en el registro. De forma asíncrona pero visible, detecta el correo guardado en memoria del **Coordinador Asignado** e inserta un **4to Destinatario** (`pregrado@usmpvirtual...` o `posgrado@usmpvirtual...`) leyendo el contexto inyectado de `window.SS_NAME`.
+    *   Uso de Native `MailApp.sendEmail` para empujar el array concatenado final, mitigando problemas de copias ocultas y permisos con un pipeline de solo Destinatarios (To-Only) transparente.
 
 ### `JS_Templates.html`
 Generador de correos.

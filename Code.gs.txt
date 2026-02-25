@@ -26,6 +26,15 @@ function doGet() {
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
+// --- HELPER: Detect Spreadsheet Name (Pregrado/Posgrado) ---
+function getSpreadsheetInfo() {
+  try {
+    return { success: true, name: SpreadsheetApp.getActiveSpreadsheet().getName() };
+  } catch(e) {
+    return { success: false, name: '' };
+  }
+}
+
 // --- HELPER: Detect Header Row ---
 function getHeaders(sheet) {
   // Try rows 1 to 5 to find the ID row (contains 'c_1_1' or 'cp_1_1')

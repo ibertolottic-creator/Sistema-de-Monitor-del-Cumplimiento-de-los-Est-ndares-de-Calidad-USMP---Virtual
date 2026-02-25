@@ -1,4 +1,35 @@
 <script>
+  // Global variable to store Spreadsheet name for Area email detection
+  window.SS_NAME = "";
+
+  document.addEventListener("DOMContentLoaded", () => {
+      fetchSpreadsheetInfo();
+  });
+
+  function fetchSpreadsheetInfo() {
+      google.script.run.withSuccessHandler(res => {
+          if (res && res.success && res.name) {
+              window.SS_NAME = res.name.toUpperCase();
+              const homeTitles = document.querySelector('#home-view h1');
+              if (homeTitles) {
+                  let badgeObj = null;
+                  if (window.SS_NAME.includes("PREGRADO")) {
+                      badgeObj = {text: 'PREGRADO', color: 'bg-blue-100 text-blue-800 border-blue-200'};
+                  } else if (window.SS_NAME.includes("POSGRADO")) {
+                      badgeObj = {text: 'POSGRADO', color: 'bg-purple-100 text-purple-800 border-purple-200'};
+                  }
+                  
+                  if (badgeObj) {
+                      const badge = document.createElement('div');
+                      badge.className = `inline-block px-3 py-1 mt-2 mb-4 rounded-full text-xs font-bold border ${badgeObj.color}`;
+                      badge.innerText = `Base de Datos Conectada: ${badgeObj.text}`;
+                      homeTitles.parentNode.insertBefore(badge, homeTitles.nextSibling);
+                  }
+              }
+          }
+      }).getSpreadsheetInfo();
+  }
+
   const CRITERIA_MAP_VIRTUAL = [
     // 1. Org y gestión
     {id:'c_1_1_pre', label:'1.1 Actualiza OVAs (Antes S1)', dim:'1. Organización y gestión académica virtual', week:'S1'},
@@ -1352,11 +1383,23 @@
 
       document.getElementById('email-modal').classList.remove('hidden'); 
       
-      // Concatenar ambos correos si existen
+      // Concatenar todos los correos: Docente + Docente2 + Coordinador + Área
       let toEmails = currentCourse.email1;
       if (currentCourse.email2 && currentCourse.email2.trim() !== '') {
           toEmails += ',' + currentCourse.email2;
       }
+      
+      if (currentCourse.coordEmail && currentCourse.coordEmail.trim() !== '') {
+          toEmails += ',' + currentCourse.coordEmail;
+      }
+
+      // Detectar correo de área basado en nombre del spreadsheet
+      if (window.SS_NAME.includes("PREGRADO")) {
+          toEmails += ',pregrado@usmpvirtual.edu.pe';
+      } else if (window.SS_NAME.includes("POSGRADO")) {
+          toEmails += ',posgrado@usmpvirtual.edu.pe';
+      }
+
       document.getElementById('email-to').value = toEmails; 
       
       const tpl = getTemplate(t, currentCourse, currentWeekId);
