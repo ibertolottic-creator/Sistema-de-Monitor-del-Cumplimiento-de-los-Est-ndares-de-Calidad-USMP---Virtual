@@ -1,9 +1,9 @@
 Estado del Proyecto: LMS Auditoría Docente
-Fecha: 25 de Febrero de 2026 
-Versión: 3.1 (Correos Inteligentes y Contexto de Sede)
+Fecha: 26 de Febrero de 2026 
+Versión: 4.0 (Módulo de Acompañamiento Pedagógico Finalizado)
 
 1. Resumen Técnico
-Se ha implementado la Fase 3 y actualizaciones progresivas (3.1 a 3.4), enfocadas en la seguridad, control de acceso basado en roles, un módulo gerencial para Jefatura, y mejoras en la comunicación:
+Se ha implementado la Fase 4 completa, además de las actualizaciones previas (Fase 3 enfocadas en seguridad y asignación masiva de carga). El hito actual es la estabilización del seguimiento docente en vivo:
 
 *   **Autenticación y Roles:** El sistema ahora lee la hoja `Datos de los coordinadores` (columna G para correo, F para rol, J para nombres). Los usuarios no registrados reciben el rol transitorio de "Invitado".
 *   **Restricciones de Invitado:** Los invitados solo tienen acceso de lectura. La interfaz bloquea opcionalmente los botones de guardar calificación y desactiva el envío de correos, mostrando advertencias ("Acceso Limitado").
@@ -20,11 +20,17 @@ Se ha implementado la Fase 3 y actualizaciones progresivas (3.1 a 3.4), enfocada
 *   **Tolerancia a Fallos en Enlaces (Fix):** Se integró un sistema de rescate (fallback) en App Script para la extracción de "Accesos Directos". Si la hoja de cálculo pierde el formato "RichText" de las aulas virtuales, el sistema leerá el texto plano y forzará la creación algorítmica de enlaces funcionales.
 *   **Corrección de Layout UI:** Se ajustó la estructuración de la vista de "Asignación de carga a coordinadores" eliminando etiquetas conflictivas, asegurando que los botones de Sincronización Global permanezcan estrictamente confinados y ocultos si el usuario se encuentra navegando fuera de su jurisdicción.
 
+*   **Módulo de Acompañamiento del Desempeño Pedagógico (Fase 4):** Se desarrolló un nuevo ecosistema independiente con un dashboard propio (`View_Dashboard_Acomp.html`).
+    *   **Lógicas Temporales:** Semáforo configurado estrictamente a 31 días (plomo > azul > amarillo 22-28 > naranja 29-31 > rojo pasado el plazo).
+    *   **Cálculo Dinámico Base 20:** El promedio se calcula en tiempo real únicamente sobre los criterios que ya han sido calificados, manteniendo la viabilidad estadística (escala 1 a 4 convertida a 20).
+    *   **Protección de Interfaz (UI Lock):** Al guardar una calificación, el selector se bloquea visualmente con un factor de transparencia hasta que Google Sheets confirme el guardado, previniendo dobles ingresos accidentales.
+    *   **Comunicaciones y WhatsApp:** Rediseño del modal de correos con plantillas automatizadas (`CONGRATULATE` puro para notas de 20 y `REPORT` que lista las deficiencias si hay notas de 1 o 2). Se habilitó la derivación automática de estos textos hacia la API web de WhatsApp.
 2. Estructura de Archivos (Google Apps Script)
 *   **Code.gs:** Lógica backend, funciones `getGlobalSessionData()`, `getAssignmentData()` y `saveAssignment()`.
 *   **Index.html:** Controles del flujo inicial, loader (`initial-auth-loader`) y Toast UI.
-*   **View_Home.html:** Nueva tarjeta de entrada al módulo de Asignación.
-*   **View_Assignment.html (NUEVO):** Módulo frontend exclusivo para la Jefatura.
+*   **View_Home.html:** Contiene tarjeta de entrada al módulo de Asignación y módulos académicos.
+*   **View_Assignment.html:** Módulo frontend exclusivo para la Jefatura.
+*   **View_Dashboard_Acomp.html / JS_Acompanamiento.html:** Interfaces y controladores dedicados al seguimiento docente (Fase Acompañamiento).
 *   **JS_Client.html:** Lógica principal de renderizado, validación de estado de `isGuest`.
 *   **JS_Tracking.html / JS_Templates.html:** Controles auxiliares de analíticas y correos.
 *   **Documentacion_Tecnica.md:** (Mantenida).
@@ -33,7 +39,8 @@ Se ha implementado la Fase 3 y actualizaciones progresivas (3.1 a 3.4), enfocada
 *   **Implementación:** Realiza una nueva implementación como "Aplicación Web" (Nueva versión).
 *   **Verificación:**
     *   Ingresar y observar el toast de bienvenida "Autenticando usuario...".
-    *   Si eres Jefe de área, buscar el botón "Asignación de carga a coordinadores" en el Home, entrar y asignar a un coordinador.
-    *   Verificar que en tu Google Sheet, hoja `Asignación de coordinador`, se modifiquen las columnas R y S.
+    *   Validar la funcionalidad del panel de `Acompañamiento`.
+    *   Probar el bloqueo de UI temporal guardando una calificación lenta.
+    *   Verificar envíos de Whatsapp con cuentas conectadas.
 
-¡El sistema Fase 3 está listo para subir a producción!
+¡El sistema Fase 4 está listo para subir a producción intensiva!

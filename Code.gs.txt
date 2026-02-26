@@ -6,7 +6,8 @@
 const SHEET_MAP = {
   'VIRTUAL': "Sistema de gestión del aprendizaje (LMS)- virtual",
   'PRESENCIAL': "Sistema de gestión del aprendizaje (LMS)- presencial",
-  'ASIGNACION': "Asignación de coordinador"
+  'ASIGNACION': "Asignación de coordinador",
+  'ACOMPANAMIENTO': "Acompañamiento del desempeño Pedagógico"
 };
 
 const SHEET_COORDINATORS = "Datos de los coordinadores";
@@ -182,11 +183,14 @@ function getInitialData(moduleKey) {
               if (!id) continue;
               const cellValue = row[c];
               
-              if (String(id).endsWith('_ts')) {
-                if (cellValue instanceof Date) timestamps[id.replace('_ts', '')] = cellValue.toISOString();
-                else timestamps[id.replace('_ts', '')] = String(cellValue);
+              const idStr = String(id);
+              if (idStr.endsWith('_ts') || idStr.endsWith('_T')) {
+                const cleanId = idStr.replace(/_ts$/, '').replace(/_T$/, '');
+                if (cellValue instanceof Date) timestamps[cleanId] = cellValue.toISOString();
+                else timestamps[cleanId] = String(cellValue);
               } else {
-                grades[id] = cellValue;
+                if (cellValue instanceof Date) grades[id] = cellValue.toISOString();
+                else grades[id] = cellValue;
               }
             }
             
@@ -409,7 +413,9 @@ function saveGrade(rowIndex, criteriaId, value, weekKey, moduleKey) {
     // Presencial headers use 'c_' prefix for timestamps even if criteria is 'cp_'
     // Example: criteria='cp_1_1_pre' -> timestamp='c_1_1_pre_ts'
     let tsId = criteriaId + '_ts';
-    if (String(criteriaId).startsWith('cp_')) {
+    if (moduleKey === 'ACOMPANAMIENTO') {
+        tsId = criteriaId + '_T';
+    } else if (String(criteriaId).startsWith('cp_')) {
         // Try precise mapping: replace 'cp_' with 'c_'
         const altTsId = String(criteriaId).replace('cp_', 'c_') + '_ts';
         // Check if this alt ID exists in headers
@@ -452,8 +458,81 @@ function saveGrade(rowIndex, criteriaId, value, weekKey, moduleKey) {
 // --- AUDITORÍA DE TIEMPOS (Helper interno) ---
 function analyzeRapidFill(sheet, rowIndex, weekKey, idsRow, isUpdate) {
   try {
+    // Si viene del módulo ACOMPANAMIENTO, aplicamos lógica distinta
+    if (weekKey === 'ACOMPANAMIENTO') {
+      const idxTimeAll = idsRow.findIndex(h => String(h).trim() === 'audit_time_alll');
+      const idxTimeAvg = idsRow.findIndex(h => String(h).trim() === 'audit_time');
+      const idxB9 = idsRow.findIndex(h => String(h).trim() === 'A_audit_burst9');
+      const idxB4 = idsRow.findIndex(h => String(h).trim() === 'A_audit_burst4');
+      
+      const relevantTimestamps = [];
+      idsRow.forEach((id, index) => {
+        if (!id) return;
+        const idLower = String(id).toLowerCase();
+        // Criterios de acompañamiento terminan en _T
+        if (idLower.endsWith('_t') && idLower.length > 3) {
+           relevantTimestamps.push(index + 1);
+        }
+      });
+      
+      if (relevantTimestamps.length === 0) return;
+      
+      const startColData = 21; 
+      const numCols = sheet.getLastColumn() - startColData + 1;
+      if (numCols < 1) return;
+      const rowValues = sheet.getRange(rowIndex, startColData, 1, numCols).getValues()[0];
+      
+      const dates = [];
+      relevantTimestamps.forEach(colIndex => {
+        const arrayIndex = colIndex - startColData; 
+        if (arrayIndex >= 0 && arrayIndex < rowValues.length) {
+          const val = rowValues[arrayIndex];
+          if (val instanceof Date) dates.push(val.getTime());
+        }
+      });
+      dates.sort((a, b) => a - b); 
+      if (dates.length < 2) return; 
+      
+      // Promedio 9 primeros
+      if (dates.length >= 9 && idxTimeAvg !== -1) {
+         const cellTimeAvg = sheet.getRange(rowIndex, idxTimeAvg + 1);
+         if (cellTimeAvg.getValue() === "") {
+            const time9 = dates[8] - dates[0];
+            const min9 = (time9 / 60000).toFixed(2);
+            cellTimeAvg.setValue(min9 + " min");
+         }
+      }
+      // Tiempo total (11)
+      if (dates.length >= 11 && idxTimeAll !== -1) {
+         const cellTimeAll = sheet.getRange(rowIndex, idxTimeAll + 1);
+         if (cellTimeAll.getValue() === "") {
+            const totalTime = dates[dates.length - 1] - dates[0];
+            const totalMin = (totalTime / 60000).toFixed(2);
+            cellTimeAll.setValue(totalMin + " min");
+         }
+      }
+      
+      // Ráfaga 8 nuevos en < 60s
+      if (!isUpdate && dates.length >= 8 && idxB9 !== -1) {
+        let burstDetected = false;
+        for (let i = 0; i <= dates.length - 8; i++) {
+          if ((dates[i+7] - dates[i]) < 60000) { burstDetected = true; break; }
+        }
+        if (burstDetected) sheet.getRange(rowIndex, idxB9 + 1).setValue("DETECTADO (" + new Date().toLocaleTimeString() + ")");
+      }
+      
+      // Ráfaga Update: 4 criterios en < 30s
+      if (isUpdate && dates.length >= 4 && idxB4 !== -1) {
+        let burstDetected = false;
+        const len = dates.length;
+        if ((dates[len-1] - dates[len-4]) < 30000) burstDetected = true;
+        if (burstDetected) sheet.getRange(rowIndex, idxB4 + 1).setValue("DETECTADO (" + new Date().toLocaleTimeString() + ")");
+      }
+      return;
+    }
+    
+    // LOGICA ORIGINAL VIRTUAL / PRESENCIAL
     const targetWeek = (weekKey === 'Pre') ? 'S1' : weekKey;
-    // Mapeo nombres de encabezado (CSV)
     const reportMap = {
       'S1': { time: 'audit_time_s1', b5: 'audit_burst5_s1', b4: 'audit_burst4_s1' }, 
       'S2': { time: 'audit_time_s2', b5: 'audit_burst5_s2', b4: 'audit_burst4_s2' }, 
@@ -565,44 +644,48 @@ function trackAccess(rowIndex, type, moduleKey) {
     // Determinar nombre de columna destino
     let targetHeader = '';
 
-    if (isAdmin) {
-      targetHeader = (type === 'AP') ? 'hits_admin_ap' : 'hits_admin_usmp';
-    } else {
-      // Buscar columna "Periodo fecha" dinámicamente
-      const colIndexDate = headers.findIndex(h => String(h).trim().toLowerCase().includes('periodo fecha'));
-      
-      let startDateCell;
-      if (colIndexDate !== -1) {
-          // getRange is 1-based, headers array is 0-based. So colIndex + 1.
-          startDateCell = sheet.getRange(rowIndex, colIndexDate + 1).getValue();
-      } else {
-          // Fallback legacy
-          startDateCell = sheet.getRange(rowIndex, 20).getValue(); 
-      }
-      
-      let start = null;
-      if (startDateCell instanceof Date) start = startDateCell;
-      else start = new Date(startDateCell);
-      
-      if (!start || isNaN(start.getTime())) return;
-      
-      const now = new Date();
-      // Ajuste de año si es antiguo (para cursos recurrentes o fechas mal configuradas)
-      if (Math.abs(now - start) / (1000 * 3600 * 24) > 180) start.setFullYear(now.getFullYear());
-
-      const diffDays = Math.floor((now - start) / (1000 * 3600 * 24));
-      
-      let weekLabel = 's1'; 
-      // Lógica específica para HITS (0-7, 8-14, 15-21, 22-28)
-      if (diffDays >= 0 && diffDays <= 7) weekLabel = 's1';        
-      else if (diffDays > 7 && diffDays <= 14) weekLabel = 's2';   
-      else if (diffDays > 14 && diffDays <= 21) weekLabel = 's3';  
-      else if (diffDays > 21 && diffDays <= 28) weekLabel = 's4'; 
-      // Post? hits_post_ap
-      else if (diffDays > 28) weekLabel = 'post';
-
+    if (moduleKey === 'ACOMPANAMIENTO') {
       const typeSuffix = (type === 'AP') ? 'ap' : 'usmp';
-      targetHeader = `hits_${weekLabel}_${typeSuffix}`;
+      if (isAdmin) {
+        targetHeader = `A_hits_admin_${typeSuffix}`;
+      } else {
+        targetHeader = `A-hits_s1_${typeSuffix}`; // A-hits_s1_ap o A_hits_s1_usmp
+      }
+    } else {
+      if (isAdmin) {
+        targetHeader = (type === 'AP') ? 'hits_admin_ap' : 'hits_admin_usmp';
+      } else {
+        // Buscar columna "Periodo fecha" dinámicamente
+        const colIndexDate = headers.findIndex(h => String(h).trim().toLowerCase().includes('periodo fecha'));
+        
+        let startDateCell;
+        if (colIndexDate !== -1) {
+            startDateCell = sheet.getRange(rowIndex, colIndexDate + 1).getValue();
+        } else {
+            startDateCell = sheet.getRange(rowIndex, 20).getValue(); 
+        }
+        
+        let start = null;
+        if (startDateCell instanceof Date) start = startDateCell;
+        else start = new Date(startDateCell);
+        
+        if (!start || isNaN(start.getTime())) return;
+        
+        const now = new Date();
+        if (Math.abs(now - start) / (1000 * 3600 * 24) > 180) start.setFullYear(now.getFullYear());
+
+        const diffDays = Math.floor((now - start) / (1000 * 3600 * 24));
+        
+        let weekLabel = 's1'; 
+        if (diffDays >= 0 && diffDays <= 7) weekLabel = 's1';        
+        else if (diffDays > 7 && diffDays <= 14) weekLabel = 's2';   
+        else if (diffDays > 14 && diffDays <= 21) weekLabel = 's3';  
+        else if (diffDays > 21 && diffDays <= 28) weekLabel = 's4'; 
+        else if (diffDays > 28) weekLabel = 'post';
+
+        const typeSuffix = (type === 'AP') ? 'ap' : 'usmp';
+        targetHeader = `hits_${weekLabel}_${typeSuffix}`;
+      }
     }
     
     // Buscar columna

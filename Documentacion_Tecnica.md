@@ -9,9 +9,10 @@ Este documento contiene la especificación completa y detallada de cada componen
 El sistema utiliza una hoja de cálculo como backend. Para replicar el proyecto, se deben crear las siguientes pestañas con estructuras específicas.
 
 ### 1.1 Pestañas de Datos (LMS)
-Se requieren dos hojas idénticas en estructura para almacenar los datos de cada modalidad:
+Se requieren tres hojas organizadas en estructura para almacenar los datos de cada modalidad:
 *   **Nombre Hoja 1:** `Sistema de gestión del aprendizaje (LMS)- virtual`
 *   **Nombre Hoja 2:** `Sistema de gestión del aprendizaje (LMS)- presencial`
+*   **Nombre Hoja 3:** `Acompañamiento del desempeño Pedagógico` (Fase 4 - Exclusivo para revisión docencial en escala del 1 al 4, 11 criterios).
 
 #### Estructura de Columnas (Crucial)
 El sistema **detecta dinámicamente** las columnas, pero espera cierta estructura base:
@@ -22,8 +23,8 @@ El sistema **detecta dinámicamente** las columnas, pero espera cierta estructur
     *   Encabezado (Fila 1): ID Técnico (ej. `c_1_1_pre`, `cp_1_1_pre`).
     *   Contenido: Notas del 1 al 4.
 *   **Columnas de Timestamp (Ocultas):**
-    *   Encabezado (Fila 1): ID Técnico + `_ts` (ej. `c_1_1_pre_ts`).
-    *   Contenido: Fecha/Hora de la última modificación.
+    *   Encabezado (Fila 1): ID Técnico + `_ts` (Para virtual/presencial) o `_T` (Para Acompañamiento, ej. `A_C01_OBJ_T`).
+    *   Contenido: Fecha/Hora de la última modificación almacenado como objeto `Date`.
 *   **Columnas de Tracking (Hits):**
     *   Encabezados: `hits_s1_ap`, `hits_s1_usmp`, `hits_s2_ap`, etc.
     *   Contenido: Contadores numéricos.
@@ -62,7 +63,7 @@ Este archivo contiene la lógica del servidor. A continuación, cada función ex
     3.  **Mapeo de Datos y Fallbacks:** Recorre las filas y construye un arreglo de objetos `course` con:
         *   `rowIndex`: Índice real en la hoja (para guardar después).
         *   `grades`: Objeto con pares `id_criterio: nota`.
-        *   `timestamps`: Objeto con fechas de modificación.
+        *   `timestamps`: Objeto con fechas de modificación (incluyendo la conversión explícita de sufijos `_T` a formato ISO string para compatibilidad de JSON).
         *   `hits/audit`: Datos de tracking.
         *   **Extracción de Enlaces (Robustez):** Intenta extraer la URL mediante `getRichTextValues()`. Si falla u obtiene texto plano (fallback), emplea algoritmos para interpretar columnas M/N (12/13) inyectando prefijos "https://" al vuelo si están ausentes, garantizando el despliegue de los botones AP/USMP en el Frontend.
     4.  **Retorno:** Objeto JSON con `courses`, `userEmail` y `role`. (Nota: Los invitados reciben toda la carga pero son restringidos visualmente en el frontend).
@@ -132,7 +133,13 @@ Controlador de la interfaz.
     *   Aplica lógica de semaforización (colores según nota).
 *   **`save(id, val, btn)`:**
     *   Envía la nota al backend (`saveGrade`).
-    *   Muestra una notificación "Toast" ("Guardando...") que solo desaparece al confirmar el éxito.
+    *   Muestra una notificación "Toast" ("Guardando...") que solo desaparece al confirmar el éxito de Google Apps Script.
+
+### `JS_Acompanamiento.html` (NUEVO FASE 4)
+Interfaz y controlador autónomo para la recolección de métricas pedagógicas.
+*   **Motor Base 20:** Implementación matemática customizada que solo contabiliza los criterios que han sido respondidos en vivo para evitar promedios decaídos por casillas sin evaluar.
+*   **UI Lock System:** Utiliza inyección de clases CSS (`pointer-events-none`, `opacity-50`, `disabled`) en los selectores `<select>` para evitar colisiones asincrónicas por clics compulsivos hasta obtener la respuesta positiva del backend.
+*   **Visibilidad de Botones Dinámica:** Incorpora validadores estrictos en el `renderDetail` para exponer el botón de Felicitar únicamente en promedios perfectos (20) y exponer el Reporte de Deficiencias únicamente al hallar notas "1" o "2" y ocultarlos en caso contrario.
 
 ### `JS_Tracking.html`
 Módulo de analítica.
@@ -151,10 +158,11 @@ Este sistema emplea el modal dinámico para crear las comunicaciones en base a T
 ### `JS_Templates.html`
 Generador de correos.
 *   **`getTemplate(type, course, week)`:**
-    *   Contiene plantillas HTML para correos.
+    *   Contiene plantillas HTML para correos de Monitoreo General y de Acompañamiento.
     *   **Lógica:**
         *   Si es `CONGRATULATE`: Genera un mensaje positivo animando a seguir así.
         *   Si es `REPORT`: Genera una tabla HTML listando solo los criterios con notas 1 o 2.
+    *   **Fallback Global de Grados:** Determina contextualmente el remitente leyendo `window.SS_NAME` e inyectando condicionalmente "Área de Pregrado" o "Posgrado" automáticamente en la firma.
 
 ---
 

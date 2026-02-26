@@ -32,12 +32,14 @@
 
   <?!= include('View_Home'); ?>
   <?!= include('View_Dashboard'); ?>
+  <?!= include('View_Dashboard_Acomp'); ?>
   <?!= include('View_Modal'); ?>
   <?!= include('View_Assignment'); ?>
 
   <?!= include('JS_Templates'); ?>
   <?!= include('JS_Tracking'); ?>
   <?!= include('JS_Client'); ?>
+  <?!= include('JS_Acompanamiento'); ?>
   
   <script>
     // System Initialization

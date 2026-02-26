@@ -242,6 +242,37 @@
         loadAssignmentModule();
         return;
     }
+    if (key === 'ACOMPANAMIENTO') {
+        currentModule = key;
+        document.getElementById('home-view').classList.add('hidden');
+        document.getElementById('module-acomp').classList.remove('hidden');
+        document.getElementById('module-acomp').style.display='flex';
+        // Podríamos usar un loader específico o el general
+        const spinner = document.getElementById('spinner-box') || document.createElement('div');
+        
+        google.script.run
+        .withSuccessHandler(d => {
+             if(handleMaintenanceResponse(d)) return;
+             if (d && d.role === 'ERROR') {
+                 alert("Error Backend: " + d.message);
+                 return;
+             }
+             if (!d || !d.courses) {
+                 alert("Error: No se recibieron datos de Acompañamiento.");
+                 return;
+             }
+             
+             document.getElementById('user-email-acomp').innerText = d.userEmail;
+             globalData = d;
+             toggleViewAcomp('OVERVIEW');
+        })
+        .withFailureHandler(e => {
+            alert("Error de Conexión: " + e);
+        })
+        .getInitialData(key);
+        
+        return;
+    }
 
     currentModule = key;
     CURRENT_CRITERIA_MAP = (key === 'PRESENCIAL') ? CRITERIA_MAP_PRESENCIAL : CRITERIA_MAP_VIRTUAL;
@@ -1394,9 +1425,10 @@
       }
 
       // Detectar correo de área basado en nombre del spreadsheet
-      if (window.SS_NAME.includes("PREGRADO")) {
+      const ssName = window.SS_NAME || '';
+      if (ssName.includes("PREGRADO")) {
           toEmails += ',pregrado@usmpvirtual.edu.pe';
-      } else if (window.SS_NAME.includes("POSGRADO")) {
+      } else if (ssName.includes("POSGRADO")) {
           toEmails += ',posgrado@usmpvirtual.edu.pe';
       }
 
