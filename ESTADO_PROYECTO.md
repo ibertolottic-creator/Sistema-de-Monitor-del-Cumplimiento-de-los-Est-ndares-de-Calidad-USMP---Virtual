@@ -25,6 +25,7 @@ Se ha implementado la Fase 4 completa, además de las actualizaciones previas (F
     *   **Cálculo Dinámico Base 20:** El promedio se calcula en tiempo real únicamente sobre los criterios que ya han sido calificados, manteniendo la viabilidad estadística (escala 1 a 4 convertida a 20).
     *   **Protección de Interfaz (UI Lock):** Al guardar una calificación, el selector se bloquea visualmente con un factor de transparencia hasta que Google Sheets confirme el guardado, previniendo dobles ingresos accidentales.
     *   **Comunicaciones y WhatsApp:** Rediseño del modal de correos con plantillas automatizadas (`CONGRATULATE` puro para notas de 20 y `REPORT` que lista las deficiencias si hay notas de 1 o 2). Se habilitó la derivación automática de estos textos hacia la API web de WhatsApp.
+    *   **Refactorización Estructural UI (Final):** La burbuja de "Guardando..." fue extraída en un componente flotante independiente (`save-indicator-acomp`) garantizando su visibilidad exclusiva sobre el dashboard nuevo. Adicionalmente, las reglas lógicas matemáticas de Felicitar (20) y Reportar (1/2) aplican una estricta exclusión mutua para impedir colisiones visuales.
 2. Estructura de Archivos (Google Apps Script)
 *   **Code.gs:** Lógica backend, funciones `getGlobalSessionData()`, `getAssignmentData()` y `saveAssignment()`.
 *   **Index.html:** Controles del flujo inicial, loader (`initial-auth-loader`) y Toast UI.

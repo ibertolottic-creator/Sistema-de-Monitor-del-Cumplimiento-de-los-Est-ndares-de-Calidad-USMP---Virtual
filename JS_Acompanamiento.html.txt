@@ -249,7 +249,7 @@
       // Color bar logic
       const pBar = document.getElementById('acomp-progress-bar');
       pBar.className = "h-2 rounded-full transition-all duration-500";
-      if(stats.color === 'ws-green') pBar.classList.add('bg-green-500');
+      if(stats.acolor === 'ws-green') pBar.classList.add('bg-green-500');
       else if(stats.color === 'ws-red') pBar.classList.add('bg-red-500');
       else if(stats.color === 'ws-yellow') pBar.classList.add('bg-yellow-400');
       else if(stats.color === 'ws-orange') pBar.classList.add('bg-orange-500');
@@ -422,27 +422,29 @@
 
       // Felicitar: solo cuando promedio es 20.00 exacto
       if (stats && stats.avg20 === "20.00" && stats.filled > 0) {
+          // Mutuamente Excluyente: Si tiene 20, solo se felicita.
           btnCongratulate.classList.remove('hidden');
+          btnReport.classList.add('hidden');
       } else {
           btnCongratulate.classList.add('hidden');
-      }
-
-      // Reportar: solo cuando hay un 1 o 2
-      let hasDeficient = false;
-      if (currentAcompCourse && currentAcompCourse.grades) {
-          for (let key in currentAcompCourse.grades) {
-              const val = parseInt(currentAcompCourse.grades[key]);
-              if (val === 1 || val === 2) {
-                  hasDeficient = true;
-                  break;
+          
+          // Reportar: solo cuando hay un 1 o 2 (y ya aseguramos que no tiene 20 perfectos)
+          let hasDeficient = false;
+          if (currentAcompCourse && currentAcompCourse.grades) {
+              for (let key in currentAcompCourse.grades) {
+                  const val = parseInt(currentAcompCourse.grades[key]);
+                  if (val === 1 || val === 2) {
+                      hasDeficient = true;
+                      break;
+                  }
               }
           }
-      }
 
-      if (hasDeficient) {
-          btnReport.classList.remove('hidden');
-      } else {
-          btnReport.classList.add('hidden');
+          if (hasDeficient) {
+              btnReport.classList.remove('hidden');
+          } else {
+              btnReport.classList.add('hidden');
+          }
       }
   }
 
@@ -453,31 +455,19 @@
 
   // --- Toasts específicos para Acompañamiento ---
   function showSavingToastAcomp() {
-      const toast = document.getElementById('save-indicator');
-      toast.innerHTML = `<div class="bg-white px-6 py-4 rounded-xl shadow-2xl flex items-center gap-4 animate-scale-in text-gray-800 border border-gray-100">
-           <i class="fa-solid fa-circle-notch fa-spin text-2xl text-blue-500"></i>
-           <div>
-              <p class="font-bold">Guardando...</p>
-              <p class="text-xs text-gray-500">Actualizando registro en tiempo real</p>
-           </div>
-        </div>`;
+      const toast = document.getElementById('save-indicator-acomp');
+      toast.innerHTML = '<div class="bg-white text-gray-800 text-base font-bold px-8 py-5 rounded-2xl shadow-2xl flex items-center gap-4 animate-scale-in"><i class="fa-solid fa-spinner fa-spin text-2xl text-red-600"></i> Guardando cambios, por favor espere...</div>';
       toast.classList.remove('hidden');
   }
 
   function showSuccessToastAcomp() {
-      const toast = document.getElementById('save-indicator');
-      toast.innerHTML = `<div class="bg-white px-6 py-4 rounded-xl shadow-2xl flex items-center gap-4 animate-scale-in text-gray-800 border border-gray-100">
-           <i class="fa-solid fa-check-circle text-2xl text-green-500"></i>
-           <div>
-              <p class="font-bold">¡Guardado Exitoso!</p>
-              <p class="text-xs text-gray-500">Sincronizado con Google Sheets</p>
-           </div>
-        </div>`;
+      const toast = document.getElementById('save-indicator-acomp');
+      toast.innerHTML = '<div class="bg-white text-gray-800 text-base font-bold px-8 py-5 rounded-2xl shadow-2xl flex items-center gap-4 animate-scale-in"><i class="fa-solid fa-check-circle text-2xl text-green-500"></i> ¡Guardado Exitoso!</div>';
       setTimeout(() => { toast.classList.add('hidden'); }, 1500);
   }
 
   function hideSavingToastAcomp() {
-      document.getElementById('save-indicator').classList.add('hidden');
+      document.getElementById('save-indicator-acomp').classList.add('hidden');
   }
 
   // --- Botón de Retorno Home ---

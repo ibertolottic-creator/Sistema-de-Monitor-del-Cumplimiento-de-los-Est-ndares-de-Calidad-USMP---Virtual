@@ -161,4 +161,9 @@
       </div>
     </div>
   </main>
+
+  <!-- SAVE INDICATOR TOAST (ACOMPAÑAMIENTO) -->
+  <div id="save-indicator-acomp" class="fixed inset-0 bg-gray-900/50 backdrop-blur-sm z-[100] flex items-center justify-center hidden transition-all duration-300 opacity-100">
+      <!-- El contenido se inyecta desde JS_Acompanamiento -->
+  </div>
 </div>
