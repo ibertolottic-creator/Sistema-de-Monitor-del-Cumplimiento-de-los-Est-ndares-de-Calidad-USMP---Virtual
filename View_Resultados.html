@@ -1,0 +1,96 @@
+<!-- ==================== REPORTES Y ENVÍO DE FICHAS VIEW ==================== -->
+<div id="resultados-view" class="flex-1 flex flex-col h-full bg-gray-50 hidden">
+    <!-- Header -->
+    <div class="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center shadow-sm">
+        <div class="flex items-center gap-4">
+            <button onclick="goHome()" class="w-10 h-10 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-600 transition-colors">
+                <i class="fa-solid fa-arrow-left"></i>
+            </button>
+            <div>
+                <h1 class="text-2xl font-bold text-gray-800 usmp-title">Envío de Resultados y Fichas</h1>
+                <p class="text-sm text-gray-500">Módulo de consolidación y envío masivo</p>
+            </div>
+        </div>
+        <div class="flex gap-3">
+             <button id="btnSyncResultados" onclick="fetchResultados(true)" class="btn-usmp-red">
+                <i id="iconSyncResultados" class="fa-solid fa-rotate mr-2"></i>Actualizar Datos
+            </button>
+            <button id="btnEnviarCorreos" onclick="openCorreoModalMasivo()" class="btn-usmp-blue opacity-50 cursor-not-allowed" disabled>
+                <i class="fa-solid fa-paper-plane mr-2"></i>Enviar Correos y Fichas
+            </button>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="flex-1 overflow-auto p-6">
+        
+        <!-- Loading State -->
+        <div id="resultados-loader" class="flex flex-col items-center justify-center p-12 bg-white rounded-xl shadow-sm border border-gray-100 mb-6 hidden">
+             <i class="fa-solid fa-circle-notch fa-spin text-4xl text-blue-600 mb-4"></i>
+             <h3 class="text-lg font-bold text-gray-800" id="resultados-loader-title">Procesando Consolidado...</h3>
+             <p class="text-gray-500 text-sm max-w-md text-center mt-2" id="resultados-loader-msg">Calculando puntajes en tiempo real desde todas las hojas. Este proceso sincronizado evita colapsos de concurrencia.</p>
+        </div>
+
+        <!-- Table Container -->
+        <div id="resultados-table-container" class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden relative">
+            
+            <div class="p-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
+                <h2 class="text-lg font-bold text-gray-700"><i class="fa-solid fa-table-list mr-2 text-blue-600"></i> Matriz Consolidada</h2>
+                <div class="text-sm text-gray-500" id="infoResultadosCount"></div>
+            </div>
+
+            <div class="overflow-x-auto w-full">
+                <table id="dtResultados" class="w-full text-left text-sm whitespace-nowrap table-auto" style="min-width: 1500px;">
+                    <thead class="text-xs text-gray-700 uppercase bg-gray-100">
+                        <tr>
+                            <th scope="col" class="px-4 py-3 sticky left-0 bg-gray-100 z-10 w-64 border-r border-gray-200">Asignatura</th>
+                            <th scope="col" class="px-4 py-3">Programa</th>
+                            <th scope="col" class="px-4 py-3">Docente</th>
+                            <th scope="col" class="px-4 py-3">Jefe/Coordinador</th>
+                            
+                            <!-- Grupo LMS -->
+                            <th scope="col" class="px-4 py-3 bg-blue-50 border-l border-blue-100 text-blue-800 text-center" colspan="2">Gestión de Aprendizaje (LMS)</th>
+                            
+                            <!-- Grupo Acomp -->
+                            <th scope="col" class="px-4 py-3 bg-purple-50 border-l border-purple-100 text-purple-800 text-center" colspan="2">Acompañamiento Pedagógico</th>
+                            
+                            <!-- Grupo Resultados -->
+                            <th scope="col" class="px-4 py-3 bg-green-50 border-l border-green-100 text-green-800 text-center" colspan="3">Resultado General</th>
+                        </tr>
+                        <tr class="text-[10px] text-gray-500">
+                            <!-- Columnas sub-headers -->
+                             <th class="px-4 py-2 sticky left-0 bg-gray-50 border-r border-gray-200 border-b border-b-gray-200 z-10"></th>
+                             <th class="px-4 py-2 bg-gray-50 border-b border-b-gray-200"></th>
+                             <th class="px-4 py-2 bg-gray-50 border-b border-b-gray-200"></th>
+                             <th class="px-4 py-2 bg-gray-50 border-b border-b-gray-200"></th>
+
+                             <!-- LMS -->
+                             <th class="px-4 py-2 bg-blue-50/50 border-l border-blue-100 border-b border-b-gray-200">Ptje (136)</th>
+                             <th class="px-4 py-2 bg-blue-50/50 border-b border-b-gray-200 text-center">Ficha (URL)</th>
+
+                             <!-- Acomp -->
+                             <th class="px-4 py-2 bg-purple-50/50 border-l border-purple-100 border-b border-b-gray-200">Ptje (44)</th>
+                             <th class="px-4 py-2 bg-purple-50/50 border-b border-b-gray-200 text-center">Ficha (URL)</th>
+
+                             <!-- Resultados -->
+                             <th class="px-4 py-2 bg-green-50/50 border-l border-green-100 border-b border-b-gray-200 font-bold">Centesimal</th>
+                             <th class="px-4 py-2 bg-green-50/50 border-b border-b-gray-200 font-bold">Vigesimal</th>
+                             <th class="px-4 py-2 bg-green-50/50 border-b border-b-gray-200 font-bold">Nivel</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tblResultadosBody" class="divide-y divide-gray-200 bg-white">
+                        <!-- Las filas se inyectan en JS_Resultados -->
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- Empty State -->
+            <div id="resultados-empty-state" class="hidden flex flex-col items-center justify-center p-12 bg-white w-full border-t border-gray-100">
+                <i class="fa-solid fa-folder-open text-4xl text-gray-300 mb-3"></i>
+                <p class="text-gray-500 font-medium text-lg">No hay datos consolidados aún</p>
+                <p class="text-sm text-gray-400 mt-1">Presiona "Actualizar Datos" para calcular la matriz.</p>
+            </div>
+
+        </div>
+    </div>
+</div>

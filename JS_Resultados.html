@@ -1,0 +1,174 @@
+<!-- ==================== JS START: MÓDULO DE RESULTADOS GENERALES ==================== -->
+<script>
+    let dtResultadosInstance = null;
+    let isLoadingResultados = false;
+    
+    /**
+     * @description Inicializador al cargar el módulo RESULTADOS
+     */
+    function initResultadosModule() {
+        if(dtResultadosInstance) {
+            // Si ya existe la vista, simplemente refrescamos los datos sin forzar Sincronización
+            fetchResultados(false);
+        } else {
+            // Primera vez: Forzamos sincronización para tener lo más fresco posible
+            fetchResultados(true);
+        }
+    }
+
+    /**
+     * @description Llama al backend (Google Apps Script) para sincronizar (opcional) y traer la data.
+     * @param {boolean} forceSync Si es true, activa la función sincronizarResultadosGenerales en backend.
+     */
+    function fetchResultados(forceSync = false) {
+        if (isLoadingResultados) return;
+        
+        isLoadingResultados = true;
+        
+        // Bloquear UI
+        document.getElementById('resultados-table-container').classList.add('hidden');
+        document.getElementById('resultados-empty-state').classList.add('hidden');
+        document.getElementById('btnEnviarCorreos').disabled = true;
+        document.getElementById('btnEnviarCorreos').classList.add('opacity-50', 'cursor-not-allowed');
+        
+        const loader = document.getElementById('resultados-loader');
+        const iconSync = document.getElementById('iconSyncResultados');
+        
+        loader.classList.remove('hidden');
+        iconSync.classList.add('fa-spin');
+        
+        if (forceSync) {
+            document.getElementById('resultados-loader-title').innerText = "Forzando Sincronización...";
+            document.getElementById('resultados-loader-msg').innerText = "Ejecutando LockService. Cruzando notas de Virtual, Presencial y Acompañamiento.";
+        } else {
+            document.getElementById('resultados-loader-title').innerText = "Cargando Resultados...";
+            document.getElementById('resultados-loader-msg').innerText = "Descargando la última instantánea disponible.";
+        }
+
+        google.script.run
+            .withSuccessHandler(res => {
+                isLoadingResultados = false;
+                loader.classList.add('hidden');
+                iconSync.classList.remove('fa-spin');
+                
+                if (res.success) {
+                    renderResultadosTable(res.data);
+                } else {
+                    if (res.retryLater) {
+                        showToast('Sistema Ocupado', res.message, 'warning');
+                        document.getElementById('resultados-empty-state').classList.remove('hidden');
+                    } else {
+                        showToast('Error', res.message, 'error');
+                        document.getElementById('resultados-empty-state').classList.remove('hidden');
+                    }
+                }
+            })
+            .withFailureHandler(err => {
+                isLoadingResultados = false;
+                loader.classList.add('hidden');
+                iconSync.classList.remove('fa-spin');
+                showToast('Error de Conexión', err.toString(), 'error');
+                document.getElementById('resultados-empty-state').classList.remove('hidden');
+            })
+            // Llamamos a la nueva función creada en GeneradorResultados.gs
+            // Si forceSync es true, ejecuta sincronizarResultadosGenerales interno.
+            .getConsolidatedData(forceSync); 
+    }
+
+    /**
+     * @description Renderiza el array de resultados en DataTables.
+     */
+    function renderResultadosTable(dataArray) {
+        const container = document.getElementById('resultados-table-container');
+        const emptyState = document.getElementById('resultados-empty-state');
+        const btnCorreos = document.getElementById('btnEnviarCorreos');
+        
+        if (!dataArray || dataArray.length === 0) {
+            container.classList.remove('hidden');
+            emptyState.classList.remove('hidden');
+            document.getElementById('dtResultados').parentElement.classList.add('hidden'); // Ocultar div de tabla
+            document.getElementById('infoResultadosCount').innerText = "0 registros";
+            return;
+        }
+        
+        // Destruir instancia anterior si existe (para limpiar memoria)
+        if (dtResultadosInstance) {
+            dtResultadosInstance.destroy();
+            dtResultadosInstance = null;
+        }
+        
+        const tbody = document.getElementById('tblResultadosBody');
+        tbody.innerHTML = '';
+        
+        dataArray.forEach(row => {
+            // Badge para Nivel
+            let badgeColor = "bg-gray-100 text-gray-800";
+            if (row.nivel === "Muy Bueno") badgeColor = "bg-green-100 text-green-800";
+            else if (row.nivel === "Bueno") badgeColor = "bg-blue-100 text-blue-800";
+            else if (row.nivel === "Regular") badgeColor = "bg-yellow-100 text-yellow-800";
+            else if (row.nivel === "Deficiente" || row.nivel === "Bajo") badgeColor = "bg-red-100 text-red-800";
+
+            // Enlaces a fichas
+            let linkLmsHtml = row.lmsUrl ? `<a href="${row.lmsUrl}" target="_blank" class="text-blue-600 hover:text-blue-800" title="Ver Ficha LMS"><i class="fa-solid fa-file-pdf text-lg"></i></a>` : `<span class="text-gray-300">-</span>`;
+            let linkAcompHtml = row.acompUrl ? `<a href="${row.acompUrl}" target="_blank" class="text-purple-600 hover:text-purple-800" title="Ver Ficha Acompañamiento"><i class="fa-solid fa-file-pdf text-lg"></i></a>` : `<span class="text-gray-300">-</span>`;
+
+            // Celdas
+            const tr = document.createElement('tr');
+            tr.className = "hover:bg-gray-50 transition-colors";
+            tr.innerHTML = `
+                <td class="px-4 py-3 sticky left-0 bg-white group-hover:bg-gray-50 border-r border-gray-200 z-10 font-medium text-gray-800 truncate" style="max-width:300px;" title="${row.curso}">${row.curso || '-'}</td>
+                <td class="px-4 py-3 truncate" style="max-width:150px;" title="${row.programa}">${row.programa || '-'}</td>
+                <td class="px-4 py-3 truncate" style="max-width:200px;" title="${row.docente}">${row.docente || '-'}</td>
+                <td class="px-4 py-3 text-gray-500 text-xs truncate" style="max-width:150px;" title="${row.coordinadorName}">${row.coordinadorName || '-'}</td>
+                
+                <td class="px-4 py-3 border-l border-blue-100 text-blue-900 font-medium">${row.lmsScore !== "" ? row.lmsScore : '-'}</td>
+                <td class="px-4 py-3 text-center border-l border-gray-100">${linkLmsHtml}</td>
+
+                <td class="px-4 py-3 border-l border-purple-100 text-purple-900 font-medium">${row.acompScore !== "" ? row.acompScore : '-'}</td>
+                <td class="px-4 py-3 text-center border-l border-gray-100">${linkAcompHtml}</td>
+
+                <td class="px-4 py-3 border-l border-green-100 text-green-700 font-bold bg-green-50/10">${row.centesimal ? parseFloat(row.centesimal).toFixed(2) : '-'}</td>
+                <td class="px-4 py-3 text-green-900 font-extrabold bg-green-50/10">${row.vigesimal ? parseFloat(row.vigesimal).toFixed(2) : '-'}</td>
+                <td class="px-4 py-3 bg-green-50/10">
+                    ${row.nivel ? `<span class="px-2 py-1 rounded-full text-xs font-semibold ${badgeColor}">${row.nivel}</span>` : '<span class="text-gray-300">-</span>'}
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        document.getElementById('dtResultados').parentElement.classList.remove('hidden');
+        container.classList.remove('hidden');
+        emptyState.classList.add('hidden');
+        
+        document.getElementById('infoResultadosCount').innerText = `${dataArray.length} registros cargados`;
+        
+        // Habilitar botón de correo
+        btnCorreos.disabled = false;
+        btnCorreos.classList.remove('opacity-50', 'cursor-not-allowed');
+
+        // Inicializar DataTable Nativo
+        dtResultadosInstance = new DataTable('#dtResultados', {
+            language: { url: 'https://cdn.datatables.net/plug-ins/1.13.7/i18n/es-ES.json' },
+            pageLength: 25,
+            ordering: true,
+            info: true,
+            searching: true,
+            responsive: false,
+            scrollX: true, // Habilita scroll horizontal para tablas tan anchas
+            fixedColumns: {
+                left: 1 // Congele la primera columna (Asignatura)
+            },
+            dom: '<"flex flex-col md:flex-row justify-between items-center mb-4"lf>rt<"flex flex-col md:flex-row justify-between items-center mt-4"ip>'
+        });
+    }
+
+    /**
+     * @description Espacio temporal (mock) para abrir modal de correos. 
+     * Se integrará luego con la plantilla que provea el usuario.
+     */
+    function openCorreoModalMasivo() {
+        showToast("Fase Pendiente", "Se activará una vez configurada la plantilla de correo del usuario.", "info");
+    }
+
+</script>
+<!-- ==================== JS END ==================== -->

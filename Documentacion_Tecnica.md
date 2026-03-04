@@ -149,13 +149,21 @@ Controlador de la interfaz.
   - Envía la nota al backend (`saveGrade`).
   - Muestra una notificación "Toast" ("Guardando...") que solo desaparece al confirmar el éxito de Google Apps Script.
 
-### `JS_Acompanamiento.html` (NUEVO FASE 4)
+### `JS_Acompanamiento.html` (FASE 4)
 
 Interfaz y controlador autónomo para la recolección de métricas pedagógicas.
 
 - **Motor Base 20:** Implementación matemática customizada que solo contabiliza los criterios que han sido respondidos en vivo para evitar promedios decaídos por casillas sin evaluar.
 - **UI Lock System:** Utiliza inyección de clases CSS (`pointer-events-none`, `opacity-50`, `disabled`) en los selectores `<select>` para evitar colisiones asincrónicas por clics compulsivos hasta obtener la respuesta positiva del backend.
 - **Visibilidad de Botones Dinámica:** Incorpora validadores estrictos en el `renderDetail` para exponer el botón de Felicitar únicamente en promedios perfectos (20) y exponer el Reporte de Deficiencias únicamente al hallar notas "1" o "2" y ocultarlos en caso contrario.
+
+### `JS_Resultados.html` (NUEVO FASE 5)
+
+Controlador autónomo para la vista de Consolidación General y Envío Masivo.
+
+- **Renderizado Asíncrono de DataTable:** Intercepta la carga de la vista para llamar inmediatamente a `getConsolidatedData()`. Utiliza manipulación directa del DOM para construir la tabla HTML y posteriormente inicializa la librería DataTables.
+- **Protección Visual (Loader):** Oscurece e inutiliza la pantalla mientras el Backend está escaneando las hojas para mitigar impaciencia del usuario.
+- **Integración de Rutas Seguras:** Posee una función explícita interconectada al sistema de ruteo universal para regresar al Dashboard principal sin alterar el `Index.html`.
 
 ---
 
@@ -199,6 +207,21 @@ Generador de correos.
     - Si es `CONGRATULATE`: Genera un mensaje positivo animando a seguir así.
     - Si es `REPORT`: Genera una tabla HTML listando solo los criterios con notas 1 o 2.
   - **Fallback Global de Grados:** Determina contextualmente el remitente leyendo `window.SS_NAME` e inyectando condicionalmente "Área de Pregrado" o "Posgrado" automáticamente en la firma.
+
+---
+
+## 3.6. Sistema de Consolidación y Envío Masivo (Fase 5)
+
+### `GeneradorResultados.gs`
+
+Script Backend estructurado para no interferir con `Code.gs` e independizar el ruteo de red.
+
+- **`sincronizarResultadosGenerales()`:** Motor de lectura multidimensional. Protegido completamente por `LockService.getScriptLock()` con Tiempos de Espera (WaitLock de 30s).
+  - Escanea la hoja madre "Asignación de coordinador".
+  - Procesa la integración de datos insertando las sumas totales (LMS vs Presencial vs Acompañamiento).
+  - Convierte la nota centesimal en Base Vigesimal dinámicamente.
+  - Genera y asigna el "Nivel" corporativo (Ej. "DESTAQUE" 19-20, "DEFICIENTE" 0-10).
+- **`getConsolidatedData()`:** El endpoint API ligero. Al ser invocado por el usuario, lee los valores de "Envío de resultados y fichas" combinándolos cuidadosamente para el renderizado del DataTables.
 
 ---
 

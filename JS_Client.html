@@ -238,6 +238,10 @@
 
   // --- MAIN ---
   function loadModule(key) {
+    if(key === 'HOME') {
+        goHome();
+        return;
+    }
     if(key === 'ASIGNACION') {
         loadAssignmentModule();
         return;
@@ -271,6 +275,27 @@
         })
         .getInitialData(key);
         
+        return;
+    }
+
+    if (key === 'RESULTADOS') {
+        currentModule = key;
+        document.getElementById('home-view').classList.add('hidden');
+        if(document.getElementById('module-view')) {
+           document.getElementById('module-view').classList.add('hidden');
+           document.getElementById('module-view').style.display='none';
+        }
+        if(document.getElementById('module-acomp')) {
+           document.getElementById('module-acomp').classList.add('hidden');
+           document.getElementById('module-acomp').style.display='none';
+        }
+        if(document.getElementById('assignment-view')) document.getElementById('assignment-view').classList.add('hidden');
+        
+        const resView = document.getElementById('resultados-view');
+        if(resView) {
+            resView.classList.remove('hidden');
+            if(typeof initResultadosModule === 'function') initResultadosModule();
+        }
         return;
     }
 
@@ -337,7 +362,14 @@
   function goHome() {
      document.getElementById('module-view').classList.add('hidden');
      document.getElementById('module-view').style.display='none';
+     if(document.getElementById('module-acomp')) {
+         document.getElementById('module-acomp').classList.add('hidden');
+         document.getElementById('module-acomp').style.display='none';
+     }
      document.getElementById('assignment-view').classList.add('hidden');
+     const resView = document.getElementById('resultados-view');
+     if(resView) resView.classList.add('hidden');
+
      document.getElementById('home-view').classList.remove('hidden');
      globalData=null; currentCourse=null;
      document.getElementById('spinner-box').classList.remove('hidden');

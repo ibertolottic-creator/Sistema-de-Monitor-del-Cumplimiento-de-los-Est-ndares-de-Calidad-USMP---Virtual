@@ -1,6 +1,6 @@
 Estado del Proyecto: LMS Auditoría Docente
-Fecha: 26 de Febrero de 2026
-Versión: 4.0 (Módulo de Acompañamiento Pedagógico Finalizado)
+Fecha: 3 de Marzo de 2026
+Versión: 5.0 (Consolidación, Envío Masivo y Arquitectura de Inicio)
 
 1. Resumen Técnico
    Se ha implementado la Fase 4 completa, además de las actualizaciones previas (Fase 3 enfocadas en seguridad y asignación masiva de carga). El hito actual es la estabilización del seguimiento docente en vivo:
@@ -32,6 +32,17 @@ Versión: 4.0 (Módulo de Acompañamiento Pedagógico Finalizado)
     - Generan dinámicamente el documento en una carpeta de Drive centralizada cruzando las columnas del 1 al 4 para las Semanas 1 a 4.
     - El Frontend (`JS_Client.html`) ahora rastrea el progreso "Global". Solo cuando un docente virtual o presencial llega al 100% de Evaluación en sus 4 semanas, se activa el botón azul de "Generar Ficha Doc". Al procesarlo, interconecta con la `Url_ficha` guardándola nativamente en la Hoja respectiva para que quede una constancia incrustada.
 
+- **Arquitectura Visual de Inicio (Fase 5):** Rediseño total de `View_Home.html`.
+  - Se habilitó **Scroll nativo** (`overflow-y-auto`) permitiendo la escala infinita de módulos.
+  - El menú principal ahora se categoriza en tres vertientes visuales escalonadas (animación tipo Cascada):
+    1. **Área Operativa:** Módulos transaccionales de uso diario (Virtual, Presencial, Acompañamiento, Consolidación).
+    2. **Área de Gestión:** Modulo "Asignación de carga" encapsulado, exclusivo para cuentas Jefatura.
+    3. **Área Estratégica y Análisis:** Interfaces preparadas ("En Desarrollo") para minería de datos de Docentes y Coordinadores.
+- **Módulo de Consolidación y Envío Masivo (Fase 5):**
+  - Nuevo ecosistema backend (`GeneradorResultados.gs`) que clona en la RAM a través de `LockService` todas las variables del sistema para combinarlas de forma multi-dimensional sin corromper la base de datos de producción.
+  - Endpoint `sincronizarResultadosGenerales()` lee el índice de la pestaña principal ("Asignación de coordinador"), extrae los nombres en bruto, rastrea sus IDs tanto en "LMS-virtual" o "LMS-presencial" y extrae adicionalmente la nota Base 20 de "Acompañamiento".
+  - Interfaz de tabla de datos interactiva (`View_Resultados.html` y `JS_Resultados.html`) equipada con estado temporal (Loader) previniendo que la pantalla se congele durante el renderizado asíncrono.
+
 2. Estructura de Archivos (Google Apps Script)
 
 - **Code.gs:** Lógica backend, funciones `getGlobalSessionData()`, `getAssignmentData()` y `saveAssignment()`.
@@ -51,5 +62,7 @@ Versión: 4.0 (Módulo de Acompañamiento Pedagógico Finalizado)
   - Validar la funcionalidad del panel de `Acompañamiento`.
   - Probar el bloqueo de UI temporal guardando una calificación lenta.
   - Verificar envíos de Whatsapp con cuentas conectadas.
+  - **NUEVO:** Probar la sincronización en vivo del padrón "Envío de Resultados Generales" dando clic al botón "Actualizar Datos". Revisar que la interfaz proteja a otros coordinadores vía `LockService`.
+  - Proporcionar la plantilla oficial para el envío masivo de correos (Fase final de reportes).
 
-¡El sistema Fase 4 está listo para subir a producción intensiva!
+¡El sistema Fase 5 está listo para ser validado por la Jefatura!
