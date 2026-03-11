@@ -228,6 +228,17 @@ Script Backend estructurado para no interferir con `Code.gs` e independizar el r
 - **`getConsolidatedData()`:** El endpoint API ligero. Al ser invocado por el usuario, lee los 33 valores de "Envío de resultados y fichas" combinándolos para DataTables.
 - **Inyección de Correos Estructurados:** Utiliza el método `MailApp.sendEmail` para inyectar plantillas HTML (`bodyHtml`). Sustituye descripciones cualitativas ("Muy Bueno", "Deficiente") por la expresión matemática del cálculo Vigesimal Base 20 (`(50 x nota) / 136`). Formatea el Periodo nativo usando `Utilities.formatDate(date, tz, 'MM-yyyy')` junto con el nombre del Programa y firma bajo el **nombre de display: Acompañamiento docente USMP Virtual**.
 
+### `GeneradorBI.gs` (Subsistema de Inteligencia de Negocios)
+
+Script Backend dedicado exclusivamente a la generación del Data Mart "Sábana General Docente", diseñado para ser consumido por integradores externos como Power BI o Looker Studio.
+
+- **`generarCabecerasSabanaGeneral()`:** Automatiza la creación de la estructura de la base de datos BI. Extrae la Fila 1 y Fila 2 de las hojas origen (Asignación, Virtual, Acompaño) y ensambla 68 columnas perfectamente alineadas en RAM antes de pegarlas sobre la hoja destino.
+- **`sincronizarSabanaBI()`:** Motor de sincronización masiva y procesamiento matemático.
+  - Itera sobre todos los docentes existentes en Asignación.
+  - Absorbe la data complementaria vía la función hash `construirMapaResultadosParaBI()`.
+  - Transforma matemáticamente la base nativa escalar de los totales de cada módulo (`LMS_TOTAL` y `ACOMP_TOTAL`) proyectándolos equitativamente a puntuaciones de Base Vigesimal (Máx 20).
+  - Calcula la ecuación final del sistema `((50*LmsPts)/136) + ((50*AcompPts)/44)` y lo deposita como un metadato numérico transaccional en la sábana física.
+
 ---
 
 ## 4. Scripts Auxiliares (Pipeline de Datos)
@@ -252,6 +263,7 @@ Para replicar el flujo de datos completo, se necesitan estos scripts independien
 3.  **Editor de Secuencias de Comandos:** Abrir Extensiones > Apps Script.
 4.  **Crear Archivos:**
     - Copiar el contenido de `Code.gs` a `Code.gs`.
+    - Crear scripts auxiliares funcionales: `Menu.gs`, `GeneradorDoc.gs`, `GeneradorResultados.gs` y `GeneradorBI.gs`.
     - Crear archivos HTML: `Index`, `JS_Client`, `JS_Tracking`, `JS_Templates`, `CSS`, `View_Home`, `View_Dashboard`, `View_Modal`.
     - Copiar el código correspondiente a cada uno.
 5.  **Implementar:**

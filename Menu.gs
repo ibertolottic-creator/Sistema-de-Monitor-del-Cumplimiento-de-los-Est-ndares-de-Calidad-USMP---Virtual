@@ -16,5 +16,8 @@ function onOpen() {
       .addItem('🏫 Sincronizar LMS Presencial', 'sincronizarLMSPresencial')
       .addSeparator() // Una línea separadora visual
       .addItem('📝 Sincronizar TODO (Acompañamiento)', 'sincronizarAcompanamiento')
+      .addSeparator()
+      .addItem('🚀 (BI) Generar Cabeceras Sábana Docente', 'generarCabecerasSabanaGeneral')
+      .addItem('📊 (BI) Sincronizar Sábana General Docente', 'sincronizarSabanaBI')
       .addToUi();
 }

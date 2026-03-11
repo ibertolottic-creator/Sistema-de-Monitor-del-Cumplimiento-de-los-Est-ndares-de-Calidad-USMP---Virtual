@@ -50,6 +50,12 @@ Versión: 5.0 (Consolidación, Envío Masivo y Arquitectura de Inicio)
     - **Algoritmo Extractor "Criterios a Mejorar":** Se desarrolló un escáner lógico dentro de `GeneradorResultados.gs` que al momento de evaluar filas pregunta: _"¿Esta celda tiene calificación 1 o 2?"_. En caso afirmativo, asciende directamente a la Fila 2 (donde habitan los nombres descriptivos de la rúbrica), y captura la oración completa (Ej: _"Mantiene empatía..."_).
     - **Renderizado UI de Deficiencias:** El backend inyecta todos estos conceptos bajos en formato de texto separado por comas hacia el frontend `JS_Resultados.html`. Allí se divide el array y se inyecta en el DOM en forma de mini-etiquetas rojas de Bootstrap (Pill Badges) permitiendo al Coordinador detectar la falencia específica en un solo golpe de vista de la tabla.
 
+- **Subsistema de Inteligencia de Negocios (Data Mart BI):**
+  - **Generación de Cabeceras Dinámicas:** Nueva funcionalidad (`generarCabecerasSabanaGeneral()` en `GeneradorBI.gs`) que escanea las matrices "Virtual", "Asignación" y "Acompañamiento", y ensambla automáticamente 68 columnas (IDs técnicos + Nombres descriptivos) en la nueva hoja `Sábana General Docente`.
+  - **Motor de Consolidación Base 20:** El backend (`sincronizarSabanaBI()`) unifica todas las evaluaciones de un docente. Cruza las notas matemáticas crudas de LMS (ej. puntaje base 136) y Acompañamiento (ej. puntaje base 44), y transfiere ambos totales transformados explícitamente a Base Vigesimal (Máx 20) dentro del Data Mart.
+  - **Cálculo de Fórmula Final:** Se procesa matemáticamente la ecuación final requerida `((50*LMS)/136) + ((50*ACOMP)/44)` para inyectar el Score Centesimal en la sábana física, permitiendo integración directa con Looker Studio o Power BI.
+  - **[EN PAUSA] Pendiente Arquitectónico:** Decisión pendiente sobre cómo ramificar las sábanas de resultados debido al solapamiento de identidades entre los criterios virtuales y presenciales (usando Option B: Títulos Combinados, u Option C: Sábanas Separadas).
+
 2. Estructura de Archivos (Google Apps Script)
 
 - **Code.gs:** Lógica backend, funciones `getGlobalSessionData()`, `getAssignmentData()` y `saveAssignment()`.

@@ -416,14 +416,14 @@ function enviarCorreosResultadosMasivos(idsArray) {
         if (periodoRaw) {
           if (periodoRaw instanceof Date) {
             // "MM-yyyy" (ej: 02-2026)
-            periodo = Utilities.formatDate(periodoRaw, Session.getScriptTimeZone(), 'MM-yyyy'); 
+            periodo = Utilities.formatDate(periodoRaw, Session.getScriptTimeZone(), 'MM-yyyy');
           } else {
             // Fallback en caso sea un string y se pueda parsear
             var dateObj = new Date(periodoRaw);
             if (!isNaN(dateObj)) {
-               periodo = Utilities.formatDate(dateObj, Session.getScriptTimeZone(), 'MM-yyyy'); 
+              periodo = Utilities.formatDate(dateObj, Session.getScriptTimeZone(), 'MM-yyyy');
             } else {
-               periodo = String(periodoRaw);
+              periodo = String(periodoRaw);
             }
           }
         }
