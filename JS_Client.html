@@ -299,6 +299,24 @@
         return;
     }
 
+    if (key === 'BI') {
+        currentModule = key;
+        document.getElementById('home-view').classList.add('hidden');
+        if(document.getElementById('module-view')) {
+           document.getElementById('module-view').classList.add('hidden');
+           document.getElementById('module-view').style.display='none';
+        }
+        if(document.getElementById('module-acomp')) {
+           document.getElementById('module-acomp').classList.add('hidden');
+           document.getElementById('module-acomp').style.display='none';
+        }
+        if(document.getElementById('assignment-view')) document.getElementById('assignment-view').classList.add('hidden');
+        if(document.getElementById('resultados-view')) document.getElementById('resultados-view').classList.add('hidden');
+        
+        if(typeof mostrarModuloBI === 'function') mostrarModuloBI();
+        return;
+    }
+
     currentModule = key;
     CURRENT_CRITERIA_MAP = (key === 'PRESENCIAL') ? CRITERIA_MAP_PRESENCIAL : CRITERIA_MAP_VIRTUAL;
     
@@ -368,9 +386,16 @@
      }
      document.getElementById('assignment-view').classList.add('hidden');
      const resView = document.getElementById('resultados-view');
-     if(resView) resView.classList.add('hidden');
+     if(resView) { resView.classList.add('hidden'); resView.style.display='none'; }
+     
+     const biView = document.getElementById('module-dashboard-bi');
+     if(biView) { biView.style.display='none'; }
 
-     document.getElementById('home-view').classList.remove('hidden');
+     // Restaurar Home (limpiar inline style que BI puso)
+     var homeView = document.getElementById('home-view');
+     homeView.classList.remove('hidden');
+     homeView.style.display = '';
+
      globalData=null; currentCourse=null;
      document.getElementById('spinner-box').classList.remove('hidden');
      document.getElementById('main-content').classList.add('hidden');

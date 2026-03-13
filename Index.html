@@ -36,17 +36,23 @@
   <?!= include('View_Modal'); ?>
   <?!= include('View_Assignment'); ?>
   <?!= include('View_Resultados'); ?>
+  <?!= include('View_Dashboard_BI'); ?>
 
   <?!= include('JS_Templates'); ?>
   <?!= include('JS_Tracking'); ?>
   <?!= include('JS_Client'); ?>
   <?!= include('JS_Acompanamiento'); ?>
   <?!= include('JS_Resultados'); ?>
+  <?!= include('JS_BI'); ?>
   
   
   <script>
     // System Initialization
     window.onload = function() {
+       // SEGURIDAD: Forzar ocultamiento del módulo BI al inicio
+       var biMod = document.getElementById('module-dashboard-bi');
+       if (biMod) biMod.style.display = 'none';
+
        google.script.run
        .withSuccessHandler(res => {
            if(res && res.success) {

@@ -1,0 +1,228 @@
+<script>
+/**
+ * ======================================================================
+ * CONTROLADOR FRONTEND - DASHBOARD BI (ANÁLISIS DE DOCENTES)
+ * Archivo: JS_BI.html
+ * ======================================================================
+ * Consume: Backend_BI.gs → getSabanaBIData()
+ * Props: nombre, asignatura, programa, modalidad, ptsLMS, ptsAcomp, promedio, scoreGral, criteriosExclusivos
+ */
+var biDataGlobal = [];
+var chartDistribucionInstance = null;
+var chartExclusivoInstance = null;
+
+var BI_COLORS = {
+  blue: '#3b82f6', green: '#10b981', cyan: '#06b6d4',
+  yellow: '#f59e0b', red: '#ef4444', gray: '#9ca3af',
+  virtual: '#2563eb', presencial: '#7c3aed'
+};
+
+/** Punto de entrada: llamado desde loadModule('BI') en JS_Client */
+function mostrarModuloBI() {
+  // Ocultar TODAS las vistas principales
+  var ids = ['home-view','module-view','module-acomp','assignment-view','resultados-view'];
+  for (var i = 0; i < ids.length; i++) {
+    var el = document.getElementById(ids[i]);
+    if (el) { el.style.display = 'none'; }
+  }
+  // Mostrar Dashboard BI
+  var biView = document.getElementById('module-dashboard-bi');
+  if (biView) { biView.style.display = 'flex'; }
+  // Cargar datos si es la primera vez
+  if (biDataGlobal.length === 0) { cargarDataSabanaBI(); }
+}
+
+/** Llama al backend */
+function cargarDataSabanaBI() {
+  var loader = document.getElementById('bi-loader');
+  var content = document.getElementById('bi-content');
+  var btn = document.getElementById('btnRecargarBI');
+
+  loader.style.display = 'flex';
+  content.style.display = 'none';
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Cargando...';
+
+  google.script.run
+    .withSuccessHandler(function(res) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fa-solid fa-sync-alt"></i> Actualizar Sábana';
+
+      if (res.role === 'ERROR') {
+        loader.innerHTML = '<div style="text-align:center;"><i class="fa-solid fa-triangle-exclamation" style="font-size:36px;color:#f87171;margin-bottom:12px;display:block;"></i><p style="color:#ef4444;font-weight:700;font-size:14px;">' + res.message + '</p><button onclick="cargarDataSabanaBI()" style="margin-top:12px;padding:8px 16px;background:#3b82f6;color:#fff;border:none;border-radius:8px;font-size:13px;cursor:pointer;font-weight:700;">Reintentar</button></div>';
+        return;
+      }
+
+      biDataGlobal = res.biData || [];
+      renderBiDashboard();
+
+      loader.style.display = 'none';
+      content.style.display = 'block';
+    })
+    .withFailureHandler(function(err) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fa-solid fa-sync-alt"></i> Actualizar Sábana';
+      loader.innerHTML = '<div style="text-align:center;"><i class="fa-solid fa-plug-circle-xmark" style="font-size:36px;color:#f87171;margin-bottom:12px;display:block;"></i><p style="color:#ef4444;font-weight:700;font-size:14px;">Error de conexión: ' + (err.message || err) + '</p></div>';
+    })
+    .getSabanaBIData();
+}
+
+/** Renderiza el dashboard con datos filtrados */
+function renderBiDashboard() {
+  if (!biDataGlobal || biDataGlobal.length === 0) {
+    document.getElementById('kpi-bi-docentes').textContent = '0';
+    return;
+  }
+
+  var filtro = document.getElementById('filtroBiModalidad').value;
+
+  // Filtrar
+  var dataFiltrada = biDataGlobal;
+  if (filtro === 'VIRTUAL_HIBRIDO') {
+    dataFiltrada = biDataGlobal.filter(function(d) { return d.modalidad !== 'PRESENCIAL'; });
+  } else if (filtro === 'PRESENCIAL') {
+    dataFiltrada = biDataGlobal.filter(function(d) { return d.modalidad === 'PRESENCIAL'; });
+  }
+
+  // Calcular KPIs
+  var sumProm = 0, sumLMS = 0, sumAcomp = 0;
+  var cntProm = 0, cntLMS = 0, cntAcomp = 0;
+
+  var distNiveles = { 'Muy Bueno (17-20)': 0, 'Bueno (14-16)': 0, 'Regular (11-13)': 0, 'Deficiente (≤10)': 0 };
+
+  for (var i = 0; i < dataFiltrada.length; i++) {
+    var doc = dataFiltrada[i];
+    if (doc.promedio > 0) { sumProm += doc.promedio; cntProm++; }
+    if (doc.ptsLMS > 0)   { sumLMS += doc.ptsLMS; cntLMS++; }
+    if (doc.ptsAcomp > 0) { sumAcomp += doc.ptsAcomp; cntAcomp++; }
+
+    if (doc.promedio > 0) {
+      if (doc.promedio >= 17) distNiveles['Muy Bueno (17-20)']++;
+      else if (doc.promedio >= 14) distNiveles['Bueno (14-16)']++;
+      else if (doc.promedio >= 11) distNiveles['Regular (11-13)']++;
+      else distNiveles['Deficiente (≤10)']++;
+    }
+  }
+
+  // Pintar KPIs
+  document.getElementById('kpi-bi-docentes').textContent = dataFiltrada.length;
+  document.getElementById('kpi-bi-vigesimal').textContent = cntProm > 0 ? (sumProm / cntProm).toFixed(2) : '-';
+  document.getElementById('kpi-bi-lms').textContent = cntLMS > 0 ? (sumLMS / cntLMS).toFixed(2) : '-';
+  document.getElementById('kpi-bi-acomp').textContent = cntAcomp > 0 ? (sumAcomp / cntAcomp).toFixed(2) : '-';
+
+  renderChartDistribucion(distNiveles);
+  renderPanelDinamicoExclusivo(filtro, dataFiltrada);
+}
+
+// ---------------------------------------------------------------
+// GRÁFICOS CHART.JS
+// ---------------------------------------------------------------
+
+function renderChartDistribucion(distNiveles) {
+  var ctx = document.getElementById('chartBiDistribucion');
+  if (!ctx) return;
+  if (chartDistribucionInstance) chartDistribucionInstance.destroy();
+
+  var labels = Object.keys(distNiveles);
+  var data = Object.values(distNiveles);
+
+  chartDistribucionInstance = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: labels,
+      datasets: [{ data: data, backgroundColor: [BI_COLORS.green, BI_COLORS.blue, BI_COLORS.yellow, BI_COLORS.red], borderWidth: 2, hoverBorderColor: '#fff' }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: '65%',
+      plugins: {
+        legend: { display: true, position: 'right', labels: { usePointStyle: true, padding: 15, font: { size: 12, family: 'Inter, sans-serif' } } },
+        tooltip: { backgroundColor: '#1e293b', titleFont: { size: 13 }, bodyFont: { size: 12 }, padding: 12, cornerRadius: 8 }
+      }
+    }
+  });
+}
+
+function renderPanelDinamicoExclusivo(modalidadActiva, dataFiltrada) {
+  var title = document.getElementById('bi-dinamico-title');
+  var badge = document.getElementById('bi-dinamico-badge');
+  var helper = document.getElementById('bi-dinamico-helper');
+  var canvas = document.getElementById('chartBiExclusivos');
+
+  if (chartExclusivoInstance) { chartExclusivoInstance.destroy(); chartExclusivoInstance = null; }
+
+  if (modalidadActiva === 'TODAS') {
+    title.innerHTML = '<i class="fa-solid fa-bullseye" style="color:#7c3aed;margin-right:6px;"></i>Rendimiento Específico';
+    badge.textContent = 'Modalidad Mixta';
+    badge.style.background = '#e2e8f0'; badge.style.color = '#64748b';
+    helper.style.display = 'block';
+    canvas.style.display = 'none';
+    return;
+  }
+
+  helper.style.display = 'none';
+  canvas.style.display = 'block';
+
+  var chartLabels = [];
+  var barColor = '';
+
+  if (modalidadActiva === 'VIRTUAL_HIBRIDO') {
+    title.innerHTML = '<i class="fa-solid fa-video" style="color:#3b82f6;margin-right:6px;"></i>Evolución Semanal de Tutorías';
+    badge.textContent = 'Virtual / Híbrida';
+    badge.style.background = '#dbeafe'; badge.style.color = '#1d4ed8';
+    chartLabels = ['Tutoría S1', 'Tutoría S2', 'Tutoría S3', 'Tutoría S4'];
+    barColor = BI_COLORS.virtual;
+  } else {
+    title.innerHTML = '<i class="fa-solid fa-school" style="color:#7c3aed;margin-right:6px;"></i>Evaluaciones y Asistencia';
+    badge.textContent = 'Presencial';
+    badge.style.background = '#ede9fe'; badge.style.color = '#6d28d9';
+    chartLabels = ['Eval. Imprimir (S1)', 'Examen Parcial (S2)', 'Examen Final (S4)', 'Reg. Inasistencia (S4)'];
+    barColor = BI_COLORS.presencial;
+  }
+
+  var sumas = [0, 0, 0, 0];
+  var counts = [0, 0, 0, 0];
+  var keys = ['S1', 'S2', 'S3', 'S4'];
+
+  for (var i = 0; i < dataFiltrada.length; i++) {
+    var doc = dataFiltrada[i];
+    if (doc.criteriosExclusivos) {
+      for (var k = 0; k < 4; k++) {
+        var val = doc.criteriosExclusivos[keys[k]];
+        if (val !== null && val !== '' && !isNaN(val)) {
+          sumas[k] += Number(val);
+          counts[k]++;
+        }
+      }
+    }
+  }
+
+  var promedios = [];
+  for (var k = 0; k < 4; k++) {
+    promedios.push(counts[k] > 0 ? parseFloat((sumas[k] / counts[k]).toFixed(2)) : 0);
+  }
+
+  chartExclusivoInstance = new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels: chartLabels,
+      datasets: [{ label: 'Promedio (escala 1-4)', backgroundColor: barColor, borderColor: barColor, borderRadius: 6, data: promedios }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: { grid: { display: false }, ticks: { font: { size: 11, family: 'Inter, sans-serif' } } },
+        y: { min: 0, max: 4, ticks: { stepSize: 1, font: { size: 11 } }, grid: { color: '#f1f5f9' } }
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: { backgroundColor: '#1e293b', cornerRadius: 8, padding: 10,
+          callbacks: { label: function(ctx) { return ' Promedio: ' + ctx.raw + ' / 4'; } }
+        }
+      }
+    }
+  });
+}
+</script>
