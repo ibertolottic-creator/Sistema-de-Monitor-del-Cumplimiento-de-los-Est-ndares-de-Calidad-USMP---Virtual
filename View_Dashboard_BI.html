@@ -80,27 +80,55 @@
           </div>
         </div>
 
-        <!-- Panel Dinámico Exclusivos -->
+        <!-- Panel Dimensiones (Radar) -->
         <div id="bi-panel-dinamico" style="background:#fff; border-radius:12px; border:1px solid #e2e8f0; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.04);">
           <div style="padding:16px 20px 8px; border-bottom:1px solid #f1f5f9; display:flex; align-items:center; justify-content:space-between;">
-            <h6 style="margin:0; font-size:14px; font-weight:700; color:#334155;" id="bi-dinamico-title">
-              <i class="fa-solid fa-bullseye" style="color:#7c3aed; margin-right:6px;"></i>Rendimiento Específico
-            </h6>
-            <span id="bi-dinamico-badge" style="font-size:10px; font-weight:700; padding:3px 10px; border-radius:20px; background:#e2e8f0; color:#64748b; text-transform:uppercase;">Modalidad Mixta</span>
+            <div>
+              <h6 style="margin:0; font-size:14px; font-weight:700; color:#334155;" id="bi-dinamico-title">
+                <i class="fa-solid fa-diagram-project" style="color:#06b6d4; margin-right:6px;"></i>Rendimiento por Dimensiones
+              </h6>
+              <p style="margin:2px 0 0; font-size:11px; color:#94a3b8; font-weight:500;">Sistema de Gestión del Aprendizaje (LMS)</p>
+            </div>
+            <span id="bi-dinamico-badge" style="font-size:10px; font-weight:700; padding:3px 10px; border-radius:20px; background:#ecfdf5; color:#059669; text-transform:uppercase;">Todas las Modalidades</span>
           </div>
           <div style="padding:16px 20px; display:flex; align-items:center; justify-content:center; height:300px;">
             <!-- Helper -->
-            <div id="bi-dinamico-helper" style="text-align:center; width:100%;">
+            <div id="bi-dinamico-helper" style="text-align:center; width:100%; display:none;">
               <i class="fa-solid fa-wand-magic-sparkles" style="font-size:32px; color:#cbd5e1; margin-bottom:12px; display:block;"></i>
               <p style="color:#94a3b8; font-size:14px; margin:0; line-height:1.6;">
-                Seleccione <strong style="color:#3b82f6;">"Virtual"</strong> o <strong style="color:#7c3aed;">"Presencial"</strong> en el filtro<br>para ver el análisis de Tutorías o Evaluaciones.
+                Cargando datos de dimensiones...
               </p>
             </div>
             <!-- Canvas -->
-            <canvas id="chartBiExclusivos" style="display:none;"></canvas>
+            <canvas id="chartBiDimensiones"></canvas>
           </div>
         </div>
 
+      </div>
+
+      <!-- FILA 3: LEYENDA DE DIMENSIONES LMS -->
+      <div id="bi-leyenda-dimensiones" style="background:#fff; border-radius:12px; border:1px solid #e2e8f0; padding:20px 24px; box-shadow:0 1px 3px rgba(0,0,0,0.04); margin-bottom:24px;">
+        <h6 style="margin:0 0 14px; font-size:14px; font-weight:700; color:#334155;">
+          <i class="fa-solid fa-list-check" style="color:#06b6d4; margin-right:6px;"></i>Leyenda de Dimensiones LMS
+        </h6>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;" id="bi-leyenda-grid">
+          <!-- Columna Virtual -->
+          <div>
+            <div style="display:flex; align-items:center; gap:6px; margin-bottom:10px;">
+              <span style="width:10px; height:10px; border-radius:50%; background:#2563eb; display:inline-block;"></span>
+              <span style="font-size:12px; font-weight:700; color:#1d4ed8; text-transform:uppercase; letter-spacing:0.3px;">Virtual / Híbrida</span>
+            </div>
+            <div id="bi-leyenda-virtual" style="font-size:12px; color:#475569; line-height:1.7;"></div>
+          </div>
+          <!-- Columna Presencial -->
+          <div>
+            <div style="display:flex; align-items:center; gap:6px; margin-bottom:10px;">
+              <span style="width:10px; height:10px; border-radius:50%; background:#7c3aed; display:inline-block;"></span>
+              <span style="font-size:12px; font-weight:700; color:#6d28d9; text-transform:uppercase; letter-spacing:0.3px;">Presencial</span>
+            </div>
+            <div id="bi-leyenda-presencial" style="font-size:12px; color:#475569; line-height:1.7;"></div>
+          </div>
+        </div>
       </div>
 
     </div><!-- fin bi-content -->

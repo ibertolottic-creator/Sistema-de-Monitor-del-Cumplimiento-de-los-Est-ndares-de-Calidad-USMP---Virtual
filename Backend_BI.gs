@@ -5,23 +5,13 @@
  * ==========================================
  * Endpoint para obtener datos de la "Sábana General Docente"
  * 
- * Estructura de la Sábana (generada por GeneradorBI.gs):
- *   Fila 1 = Códigos de columna (header IDs)
- *   Fila 2 = Títulos descriptivos
- *   Fila 3+ = Datos
- *   Cols 1-19 = Asignación (A=1 hasta S=19)
- *     Col 3 (C) = Programa
- *     Col 5 (E) = Asignatura
- *     Col 7 (G) = Docente
- *     Col 8 (H) = Presencialidad (Virtual/Presencial)
- *   Cols 20-57 = LMS Criterios (38 cols expandidas)
- *   Col 58 = LMS_TOTAL (vigesimal)
- *   Cols 59-69 = Acompañamiento Criterios (11 cols)
- *   Col 70 = ACOMP_TOTAL (vigesimal)
- *   Col 71 = SCORE_GRAL (centesimal)
- *   Col 72 = SCORE_VIG (vigesimal Base 20)
- *   Tutorías Virtual: c_3_1_s1..s4 (cols 31-34 aprox)
- *   Evaluaciones Presencial: cp_3_1_s1..cp_4_1_s4 (cols 35-38 aprox)
+ * RESPUESTA (getSabanaBIData):
+ *   headerCodesLMS[]  - Array de 38 códigos de criterios LMS
+ *   headerCodesAcomp[] - Array de 11 códigos de criterios Acomp
+ *   biData[] - Array de docentes, cada uno con:
+ *     criteriosLMS[]  - 38 valores numéricos (null si vacío)
+ *     criteriosAcomp[] - 11 valores numéricos (null si vacío)
+ *     ptsLMS, ptsAcomp, promedio, scoreGral, modalidad, etc.
  *
  * NOTA: Este archivo es independiente de Code.gs.
  */
@@ -56,7 +46,6 @@ function getSabanaBIData() {
     var iPrograma = 2;    // Col C (Programa)
     var iAsignatura = 4;  // Col E (Asignatura/Curso)
     var iDocente = 6;     // Col G (Docente)
-    var iPresenc = 7;     // Col H (Presencialidad: Virtual/Presencial)
 
     // Puntajes finales (por código)
     var iLmsTotal = findCol('LMS_TOTAL');
@@ -64,17 +53,33 @@ function getSabanaBIData() {
     var iScoreGral = findCol('SCORE_GRAL');
     var iScoreVig = findCol('SCORE_VIG');
 
-    // Criterios exclusivos Virtual (Tutorías)
-    var iTutS1 = findCol('c_3_1_s1');
-    var iTutS2 = findCol('c_3_1_s2');
-    var iTutS3 = findCol('c_3_1_s3');
-    var iTutS4 = findCol('c_3_1_s4');
+    // ---------------------------------------------------------------
+    // BLOQUE LMS: 38 columnas expandidas (cols 20-57 = índices 19-56)
+    // Se ubican dinámicamente: desde col después de Asignación (19 cols)
+    // hasta LMS_TOTAL (exclusive)
+    // ---------------------------------------------------------------
+    var iLmsStart = 19; // Índice 0-based de la primera col LMS
+    var iLmsEnd = iLmsTotal !== -1 ? iLmsTotal : iLmsStart + 38;
+    var lmsCount = iLmsEnd - iLmsStart;
 
-    // Criterios exclusivos Presencial (Evaluaciones/Asistencia)
-    var iEvS1 = findCol('cp_3_1_s1');
-    var iEvS2 = findCol('cp_3_2_s2');
-    var iEvS4 = findCol('cp_3_3_s4');
-    var iAsisS4 = findCol('cp_4_1_s4');
+    var lmsHeaderCodes = [];
+    for (var c = iLmsStart; c < iLmsEnd; c++) {
+      lmsHeaderCodes.push(String(headerCodes[c] || '').trim());
+    }
+
+    // ---------------------------------------------------------------
+    // BLOQUE ACOMP: 11 columnas (después de LMS_TOTAL hasta ACOMP_TOTAL)
+    // ---------------------------------------------------------------
+    var iAcompStart = iLmsTotal !== -1 ? iLmsTotal + 1 : -1;
+    var iAcompEnd = iAcompTotal !== -1 ? iAcompTotal : (iAcompStart > 0 ? iAcompStart + 11 : -1);
+    var acompCount = iAcompStart > 0 && iAcompEnd > iAcompStart ? iAcompEnd - iAcompStart : 0;
+
+    var acompHeaderCodes = [];
+    if (iAcompStart > 0) {
+      for (var c = iAcompStart; c < iAcompEnd; c++) {
+        acompHeaderCodes.push(String(headerCodes[c] || '').trim());
+      }
+    }
 
     var result = [];
 
@@ -88,18 +93,12 @@ function getSabanaBIData() {
 
       var docente = String(row[iDocente] || '').trim();
       var programa = String(row[iPrograma] || '').trim();
-      var presenc = String(row[iPresenc] || '').trim().toUpperCase();
 
-      // Determinar modalidad según reglas de negocio:
-      // Col D (index 3) = "Modalidad" → "Virtual" o "Presencial"
-      // Col N (index 13) = "Tipo de metodología" → "Híbrida" o vacío
-      // VIRTUAL/HÍBRIDA (tutorías): Col D = "Virtual" O Col N contiene "Híbrida"
-      // PRESENCIAL (evaluaciones): Col D = "Presencial" Y Col N NO dice "Híbrida"
+      // Determinar modalidad según reglas de negocio
       var colD = String(row[3] || '').trim().toUpperCase();
       var colN = String(row[13] || '').trim().toUpperCase();
 
       var esHibrida = (colN.indexOf('HÍBRIDA') !== -1 || colN.indexOf('HIBRIDA') !== -1);
-      var esVirtualEnD = (colD.indexOf('VIRTUAL') !== -1);
       var esPresencialEnD = (colD.indexOf('PRESENCIAL') !== -1);
 
       var modalidad = 'VIRTUAL'; // default
@@ -118,22 +117,20 @@ function getSabanaBIData() {
       if (isNaN(scoreGral)) scoreGral = 0;
       if (isNaN(scoreVig)) scoreVig = 0;
 
-      // Criterios exclusivos según modalidad
-      var criterios = {};
-      if (modalidad === 'PRESENCIAL') {
-        criterios = {
-          S1: iEvS1 !== -1 ? row[iEvS1] : null,
-          S2: iEvS2 !== -1 ? row[iEvS2] : null,
-          S3: iEvS4 !== -1 ? row[iEvS4] : null,
-          S4: iAsisS4 !== -1 ? row[iAsisS4] : null
-        };
-      } else {
-        criterios = {
-          S1: iTutS1 !== -1 ? row[iTutS1] : null,
-          S2: iTutS2 !== -1 ? row[iTutS2] : null,
-          S3: iTutS3 !== -1 ? row[iTutS3] : null,
-          S4: iTutS4 !== -1 ? row[iTutS4] : null
-        };
+      // Extraer los 38 valores de criterios LMS
+      var criteriosLMS = [];
+      for (var c = iLmsStart; c < iLmsEnd; c++) {
+        var val = row[c];
+        criteriosLMS.push(val !== null && val !== '' && !isNaN(val) ? Number(val) : null);
+      }
+
+      // Extraer los 11 valores de criterios Acomp
+      var criteriosAcomp = [];
+      if (iAcompStart > 0) {
+        for (var c = iAcompStart; c < iAcompEnd; c++) {
+          var val = row[c];
+          criteriosAcomp.push(val !== null && val !== '' && !isNaN(val) ? Number(val) : null);
+        }
       }
 
       result.push({
@@ -146,11 +143,17 @@ function getSabanaBIData() {
         ptsAcomp: acompVig,
         promedio: scoreVig,
         scoreGral: scoreGral,
-        criteriosExclusivos: criterios
+        criteriosLMS: criteriosLMS,
+        criteriosAcomp: criteriosAcomp
       });
     }
 
-    return { success: true, biData: result };
+    return {
+      success: true,
+      biData: result,
+      headerCodesLMS: lmsHeaderCodes,
+      headerCodesAcomp: acompHeaderCodes
+    };
 
   } catch(e) {
     return { role: 'ERROR', message: "Error en Backend_BI: " + e.toString() };

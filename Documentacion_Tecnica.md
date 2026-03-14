@@ -165,15 +165,19 @@ Controlador autónomo para la vista de Consolidación General y Envío Masivo.
 - **Protección Visual (Loader):** Oscurece e inutiliza la pantalla mientras el Backend está escaneando las hojas para mitigar impaciencia del usuario.
 - **Integración de Rutas Seguras:** Posee una función explícita interconectada al sistema de ruteo universal para regresar al Dashboard principal sin alterar el `Index.html`.
 
-### `JS_BI.html` (NUEVO - FASE 7: Dashboard BI)
+### `JS_BI.html` (FASE 7.1: Dashboard BI — Radar de Dimensiones)
 
 Controlador autónomo para la vista de Análisis de Resultados de Docentes.
 
 - **`mostrarModuloBI()`:** Punto de entrada. Oculta todas las vistas principales usando `style.display='none'` (bulletproof, no depende de clases CSS) y muestra el dashboard BI con `style.display='flex'`.
-- **`cargarDataSabanaBI()`:** Consume `getSabanaBIData()` del backend, maneja estados de carga/error, y almacena los datos en `biDataGlobal`.
+- **`cargarDataSabanaBI()`:** Consume `getSabanaBIData()` del backend, almacena datos en `biDataGlobal` y header codes en `biHeadersLMS` / `biHeadersAcomp`.
 - **`renderBiDashboard()`:** Filtra datos según modalidad (Todas/Virtual/Presencial), calcula 4 KPIs transversales, y renderiza gráficos Chart.js.
 - **`renderChartDistribucion()`:** Gráfico Doughnut con distribución de niveles de desempeño (Muy Bueno 17-20, Bueno 14-16, Regular 11-13, Deficiente ≤10).
-- **`renderPanelDinamicoExclusivo()`:** Gráfico de barras dinámico que cambia según la modalidad seleccionada (Tutorías S1-S4 para Virtual, Evaluaciones para Presencial).
+- **`renderPanelDimensiones()`:** Gráfico **Radar** dinámico que agrupa criterios por dimensión según la modalidad:
+  - **Virtual (7 dims):** Preparación, Sesiones, Tutorías, Calificación, Comunicación, Retención, Cierre.
+  - **Presencial (8 dims):** Preparación, Sesiones, Evaluaciones, Asistencia, Calificación, Comunicación, Retención, Cierre.
+  - **Todas (9 dims unificadas):** Combina ambas modalidades con dimensiones exclusivas etiquetadas `(V)` / `(P)`.
+- **Mapas de Dimensiones:** Constantes `DIMENSIONES_VIRTUAL`, `DIMENSIONES_PRESENCIAL`, `DIMENSIONES_TODAS`, `DIMENSIONES_ACOMP` que mapean índices del array de criterios a cada dimensión.
 
 ---
 
@@ -257,13 +261,9 @@ Script Backend independiente que sirve como API para el módulo de Análisis de 
 
 - **`getSabanaBIData()`:** Endpoint principal consumido por el frontend.
   - Lee la hoja "Sábana General Docente" (Fila 1 = códigos, Fila 2 = títulos, Fila 3+ = datos).
-  - Busca columnas dinámicamente por código: `SCORE_VIG`, `LMS_TOTAL`, `ACOMP_TOTAL`, `c_3_1_s1..s4`, `cp_3_1_s1`, `cp_3_2_s2`, `cp_3_3_s4`, `cp_4_1_s4`.
-  - **Algoritmo de Modalidad:**
-    - Col D (índice 3) = "Modalidad" → "Virtual" o "Presencial".
-    - Col N (índice 13) = "Tipo de metodología" → "Híbrida" o vacío.
-    - Virtual/Híbrida: Col D="Virtual" **O** Col N="Híbrida".
-    - Presencial: Col D="Presencial" **Y** Col N≠"Híbrida".
-  - **Retorno:** `{ success: true, biData: [{nombre, asignatura, programa, modalidad, ptsLMS, ptsAcomp, promedio, scoreGral, criteriosExclusivos: {S1,S2,S3,S4}}] }`.
+  - Extrae dinámicamente los bloques de columnas LMS (38 cols) y Acomp (11 cols) basándose en las posiciones de `LMS_TOTAL` y `ACOMP_TOTAL`.
+  - **Algoritmo de Modalidad:** Col D (index 3) + Col N (index 13) para determinar Virtual/Híbrida vs Presencial.
+  - **Retorno:** `{ success: true, headerCodesLMS: [...38], headerCodesAcomp: [...11], biData: [{nombre, asignatura, programa, modalidad, ptsLMS, ptsAcomp, promedio, scoreGral, criteriosLMS: [...38 valores], criteriosAcomp: [...11 valores]}] }`.
 
 ---
 

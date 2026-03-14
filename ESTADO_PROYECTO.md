@@ -93,7 +93,7 @@ Sistema de **Monitoreo del Cumplimiento de los Estándares de Calidad** construi
 
 ---
 
-## 5. Cambios de la Sesión Actual (13 Mar 2026)
+## 5. Cambios de la Sesión Anterior (12 Mar 2026)
 
 ### Bugs Corregidos
 1. ✅ `ReferenceError: include is not defined` → `Code.gs` restaurado de Git (931 líneas)
@@ -104,26 +104,36 @@ Sistema de **Monitoreo del Cumplimiento de los Estándares de Calidad** construi
 6. ✅ Promedios BI mostraban "-" → Headers corregidos a códigos reales (`SCORE_VIG`, `LMS_TOTAL`)
 7. ✅ Filtro Presencial vacío → Detección de modalidad por Col D + Col N
 
-### Archivos Creados/Modificados
-| Archivo | Acción | Commit |
-|---------|--------|--------|
-| `Backend_BI.gs` | CREADO | `e4bc65c` |
-| `View_Dashboard_BI.html` | CREADO | `e4bc65c` |
-| `JS_BI.html` | CREADO | `e4bc65c` |
-| `Code.gs` | RESTAURADO | `e4bc65c` |
-| `Index.html` | MODIFICADO | `e4bc65c` |
-| `JS_Client.html` | MODIFICADO | `e4bc65c` |
-| `View_Home.html` | MODIFICADO | `e4bc65c` |
+---
+
+## 5.1 Cambios de la Sesión Actual (13 Mar 2026)
+
+### Mejora: Radar de Rendimiento por Dimensiones
+Se reemplazó el panel "Rendimiento Específico" (gráfico de barras con solo 4 criterios exclusivos) por un **gráfico Radar agrupado por Dimensiones**.
+
+- **Backend_BI.gs:** Ahora envía los 38 criterios LMS + 11 criterios Acomp por docente (arrays numéricos) y los header codes a nivel de response.
+- **JS_BI.html:** Nuevo motor de agrupación por dimensión con 3 mapas independientes:
+  - **Virtual (7 dims):** Preparación, Sesiones, Tutorías, Calificación, Comunicación, Retención, Cierre.
+  - **Presencial (8 dims):** Preparación, Sesiones, Evaluaciones, Asistencia, Calificación, Comunicación, Retención, Cierre.
+  - **Todas (9 dims unificadas):** Combina ambas modalidades mostrando dimensiones exclusivas etiquetadas.
+- **View_Dashboard_BI.html:** Nuevo título "Rendimiento por Dimensiones", icono `fa-diagram-project`, canvas renombrado.
+
+### Archivos Modificados
+| Archivo | Acción |
+|---------|--------|
+| `Backend_BI.gs` | MODIFICADO (envía criteriosLMS[] + criteriosAcomp[] + headerCodes) |
+| `JS_BI.html` | REESCRITO (radar de dimensiones reemplaza barras exclusivas) |
+| `View_Dashboard_BI.html` | MODIFICADO (nuevo panel + canvas) |
 
 ---
 
 ## 6. Pasos para la Próxima Sesión
 
-1. **Verificar Filtro Presencial:** Confirmar que "Presencial (Evaluaciones)" muestra docentes presenciales no-híbridos.
-2. **Validar Gráfico de Barras:** Verificar criterios exclusivos (Tutorías S1-S4 / Evaluaciones S1-S4).
-3. **Tabla Detallada:** Considerar agregar tabla con listado individual de docentes debajo de gráficos.
+1. **Verificar Radar Dimensiones:** Confirmar que el radar muestra promedios correctos para Virtual (7 dims), Presencial (8 dims) y Todas (9 dims).
+2. **Tabla Detallada:** Considerar agregar tabla con listado individual de docentes debajo de gráficos.
+3. **Panel Acompañamiento:** Considerar agregar un tercer gráfico con las dimensiones de Acompañamiento (Inicio/Desarrollo/Cierre).
 4. **Módulo Coordinadores:** Implementar "Análisis de Resultados de Coordinadores" (botón placeholder activo).
-5. **Testing General:** Probar que los demás módulos (Virtual, Presencial, Acompañamiento, Resultados, Asignación) siguen funcionando correctamente tras los cambios.
+5. **Testing General:** Probar que los demás módulos siguen funcionando correctamente.
 
 ---
 

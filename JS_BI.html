@@ -5,16 +5,64 @@
  * Archivo: JS_BI.html
  * ======================================================================
  * Consume: Backend_BI.gs → getSabanaBIData()
- * Props: nombre, asignatura, programa, modalidad, ptsLMS, ptsAcomp, promedio, scoreGral, criteriosExclusivos
+ * Props: nombre, asignatura, programa, modalidad, ptsLMS, ptsAcomp,
+ *        promedio, scoreGral, criteriosLMS[], criteriosAcomp[]
+ * Headers: headerCodesLMS[], headerCodesAcomp[] (a nivel response)
  */
 var biDataGlobal = [];
+var biHeadersLMS = [];
+var biHeadersAcomp = [];
 var chartDistribucionInstance = null;
-var chartExclusivoInstance = null;
+var chartDimensionesInstance = null;
 
 var BI_COLORS = {
   blue: '#3b82f6', green: '#10b981', cyan: '#06b6d4',
   yellow: '#f59e0b', red: '#ef4444', gray: '#9ca3af',
   virtual: '#2563eb', presencial: '#7c3aed'
+};
+
+// ---------------------------------------------------------------
+// MAPAS DE DIMENSIONES (índices 0-based dentro del bloque LMS de 38 cols)
+// ---------------------------------------------------------------
+
+var DIMENSIONES_VIRTUAL = {
+  '1': { nombre: 'Preparación', indices: [0,1] },
+  '2': { nombre: 'Sesiones', indices: [2,3,4,5,6,7,8,9,10,11] },
+  '3': { nombre: 'Tutorías', indices: [12,13,14,15] },
+  '4': { nombre: 'Calificación', indices: [20,21,22,23,24,25,26,27] },
+  '5': { nombre: 'Comunicación', indices: [28,29,30,31] },
+  '6': { nombre: 'Retención', indices: [32,33,34,35] },
+  '7': { nombre: 'Cierre', indices: [36,37] }
+};
+
+var DIMENSIONES_PRESENCIAL = {
+  '1': { nombre: 'Preparación', indices: [0,1] },
+  '2': { nombre: 'Sesiones', indices: [2,3,4,5,6,7,8,9,10,11] },
+  '3': { nombre: 'Evaluaciones', indices: [16,17,18] },
+  '4': { nombre: 'Asistencia', indices: [19] },
+  '5': { nombre: 'Calificación', indices: [20,21,22,23,24,25,26,27] },
+  '6': { nombre: 'Comunicación', indices: [28,29,30,31] },
+  '7': { nombre: 'Retención', indices: [32,33,34,35] },
+  '8': { nombre: 'Cierre', indices: [36,37] }
+};
+
+// Dimensiones "unificadas" para cuando el filtro = TODAS
+var DIMENSIONES_TODAS = {
+  '1': { nombre: 'Preparación', indicesV: [0,1], indicesP: [0,1] },
+  '2': { nombre: 'Sesiones', indicesV: [2,3,4,5,6,7,8,9,10,11], indicesP: [2,3,4,5,6,7,8,9,10,11] },
+  '3V': { nombre: 'Tutorías (V)', indicesV: [12,13,14,15], indicesP: [] },
+  '3P': { nombre: 'Evaluaciones (P)', indicesV: [], indicesP: [16,17,18] },
+  '4P': { nombre: 'Asistencia (P)', indicesV: [], indicesP: [19] },
+  '5': { nombre: 'Calificación', indicesV: [20,21,22,23,24,25,26,27], indicesP: [20,21,22,23,24,25,26,27] },
+  '6': { nombre: 'Comunicación', indicesV: [28,29,30,31], indicesP: [28,29,30,31] },
+  '7': { nombre: 'Retención', indicesV: [32,33,34,35], indicesP: [32,33,34,35] },
+  '8': { nombre: 'Cierre', indicesV: [36,37], indicesP: [36,37] }
+};
+
+var DIMENSIONES_ACOMP = {
+  'A': { nombre: 'Inicio', indices: [0,1,2] },
+  'B': { nombre: 'Desarrollo', indices: [3,4,5,6,7,8] },
+  'C': { nombre: 'Cierre', indices: [9,10] }
 };
 
 /** Punto de entrada: llamado desde loadModule('BI') en JS_Client */
@@ -54,6 +102,8 @@ function cargarDataSabanaBI() {
       }
 
       biDataGlobal = res.biData || [];
+      biHeadersLMS = res.headerCodesLMS || [];
+      biHeadersAcomp = res.headerCodesAcomp || [];
       renderBiDashboard();
 
       loader.style.display = 'none';
@@ -111,7 +161,7 @@ function renderBiDashboard() {
   document.getElementById('kpi-bi-acomp').textContent = cntAcomp > 0 ? (sumAcomp / cntAcomp).toFixed(2) : '-';
 
   renderChartDistribucion(distNiveles);
-  renderPanelDinamicoExclusivo(filtro, dataFiltrada);
+  renderPanelDimensiones(filtro, dataFiltrada);
 }
 
 // ---------------------------------------------------------------
@@ -144,82 +194,175 @@ function renderChartDistribucion(distNiveles) {
   });
 }
 
-function renderPanelDinamicoExclusivo(modalidadActiva, dataFiltrada) {
+// ---------------------------------------------------------------
+// PANEL DIMENSIONES (RADAR CHART)
+// ---------------------------------------------------------------
+
+/**
+ * Calcula el promedio de un conjunto de índices LMS para un array de docentes.
+ * Retorna un valor entre 1 y 4 (o 0 si no hay datos).
+ */
+function calcularPromedioDimension(dataFiltrada, indices, campoArray) {
+  var suma = 0, count = 0;
+  for (var i = 0; i < dataFiltrada.length; i++) {
+    var arr = dataFiltrada[i][campoArray];
+    if (!arr) continue;
+    for (var j = 0; j < indices.length; j++) {
+      var idx = indices[j];
+      if (idx < arr.length && arr[idx] !== null && arr[idx] !== undefined) {
+        suma += arr[idx];
+        count++;
+      }
+    }
+  }
+  return count > 0 ? parseFloat((suma / count).toFixed(2)) : 0;
+}
+
+function renderPanelDimensiones(modalidadActiva, dataFiltrada) {
   var title = document.getElementById('bi-dinamico-title');
   var badge = document.getElementById('bi-dinamico-badge');
   var helper = document.getElementById('bi-dinamico-helper');
-  var canvas = document.getElementById('chartBiExclusivos');
+  var canvas = document.getElementById('chartBiDimensiones');
 
-  if (chartExclusivoInstance) { chartExclusivoInstance.destroy(); chartExclusivoInstance = null; }
-
-  if (modalidadActiva === 'TODAS') {
-    title.innerHTML = '<i class="fa-solid fa-bullseye" style="color:#7c3aed;margin-right:6px;"></i>Rendimiento Específico';
-    badge.textContent = 'Modalidad Mixta';
-    badge.style.background = '#e2e8f0'; badge.style.color = '#64748b';
-    helper.style.display = 'block';
-    canvas.style.display = 'none';
-    return;
-  }
+  if (chartDimensionesInstance) { chartDimensionesInstance.destroy(); chartDimensionesInstance = null; }
 
   helper.style.display = 'none';
   canvas.style.display = 'block';
 
-  var chartLabels = [];
-  var barColor = '';
+  var labels = [];
+  var promedios = [];
+  var bgColor = '';
+  var borderColor = '';
 
   if (modalidadActiva === 'VIRTUAL_HIBRIDO') {
-    title.innerHTML = '<i class="fa-solid fa-video" style="color:#3b82f6;margin-right:6px;"></i>Evolución Semanal de Tutorías';
+    title.innerHTML = '<i class="fa-solid fa-diagram-project" style="color:#3b82f6;margin-right:6px;"></i>Rendimiento por Dimensiones';
     badge.textContent = 'Virtual / Híbrida';
     badge.style.background = '#dbeafe'; badge.style.color = '#1d4ed8';
-    chartLabels = ['Tutoría S1', 'Tutoría S2', 'Tutoría S3', 'Tutoría S4'];
-    barColor = BI_COLORS.virtual;
-  } else {
-    title.innerHTML = '<i class="fa-solid fa-school" style="color:#7c3aed;margin-right:6px;"></i>Evaluaciones y Asistencia';
+    bgColor = 'rgba(37,99,235,0.15)';
+    borderColor = BI_COLORS.virtual;
+
+    var dimKeys = Object.keys(DIMENSIONES_VIRTUAL);
+    for (var k = 0; k < dimKeys.length; k++) {
+      var dim = DIMENSIONES_VIRTUAL[dimKeys[k]];
+      labels.push(dim.nombre);
+      promedios.push(calcularPromedioDimension(dataFiltrada, dim.indices, 'criteriosLMS'));
+    }
+
+  } else if (modalidadActiva === 'PRESENCIAL') {
+    title.innerHTML = '<i class="fa-solid fa-diagram-project" style="color:#7c3aed;margin-right:6px;"></i>Rendimiento por Dimensiones';
     badge.textContent = 'Presencial';
     badge.style.background = '#ede9fe'; badge.style.color = '#6d28d9';
-    chartLabels = ['Eval. Imprimir (S1)', 'Examen Parcial (S2)', 'Examen Final (S4)', 'Reg. Inasistencia (S4)'];
-    barColor = BI_COLORS.presencial;
-  }
+    bgColor = 'rgba(124,58,237,0.15)';
+    borderColor = BI_COLORS.presencial;
 
-  var sumas = [0, 0, 0, 0];
-  var counts = [0, 0, 0, 0];
-  var keys = ['S1', 'S2', 'S3', 'S4'];
+    var dimKeys = Object.keys(DIMENSIONES_PRESENCIAL);
+    for (var k = 0; k < dimKeys.length; k++) {
+      var dim = DIMENSIONES_PRESENCIAL[dimKeys[k]];
+      labels.push(dim.nombre);
+      promedios.push(calcularPromedioDimension(dataFiltrada, dim.indices, 'criteriosLMS'));
+    }
 
-  for (var i = 0; i < dataFiltrada.length; i++) {
-    var doc = dataFiltrada[i];
-    if (doc.criteriosExclusivos) {
-      for (var k = 0; k < 4; k++) {
-        var val = doc.criteriosExclusivos[keys[k]];
-        if (val !== null && val !== '' && !isNaN(val)) {
-          sumas[k] += Number(val);
-          counts[k]++;
+  } else {
+    // TODAS: combinar Virtual y Presencial en un solo radar unificado
+    title.innerHTML = '<i class="fa-solid fa-diagram-project" style="color:#06b6d4;margin-right:6px;"></i>Rendimiento por Dimensiones';
+    badge.textContent = 'Todas las Modalidades';
+    badge.style.background = '#ecfdf5'; badge.style.color = '#059669';
+    bgColor = 'rgba(6,182,212,0.15)';
+    borderColor = BI_COLORS.cyan;
+
+    var dataV = dataFiltrada.filter(function(d) { return d.modalidad !== 'PRESENCIAL'; });
+    var dataP = dataFiltrada.filter(function(d) { return d.modalidad === 'PRESENCIAL'; });
+
+    var dimKeys = Object.keys(DIMENSIONES_TODAS);
+    for (var k = 0; k < dimKeys.length; k++) {
+      var dim = DIMENSIONES_TODAS[dimKeys[k]];
+      labels.push(dim.nombre);
+
+      // Calcular promedio combinado: Virtual usa indicesV, Presencial usa indicesP
+      var sumaTotal = 0, countTotal = 0;
+
+      // Virtual
+      if (dim.indicesV && dim.indicesV.length > 0) {
+        for (var i = 0; i < dataV.length; i++) {
+          var arr = dataV[i].criteriosLMS;
+          if (!arr) continue;
+          for (var j = 0; j < dim.indicesV.length; j++) {
+            var idx = dim.indicesV[j];
+            if (idx < arr.length && arr[idx] !== null && arr[idx] !== undefined) {
+              sumaTotal += arr[idx]; countTotal++;
+            }
+          }
         }
       }
+
+      // Presencial
+      if (dim.indicesP && dim.indicesP.length > 0) {
+        for (var i = 0; i < dataP.length; i++) {
+          var arr = dataP[i].criteriosLMS;
+          if (!arr) continue;
+          for (var j = 0; j < dim.indicesP.length; j++) {
+            var idx = dim.indicesP[j];
+            if (idx < arr.length && arr[idx] !== null && arr[idx] !== undefined) {
+              sumaTotal += arr[idx]; countTotal++;
+            }
+          }
+        }
+      }
+
+      promedios.push(countTotal > 0 ? parseFloat((sumaTotal / countTotal).toFixed(2)) : 0);
     }
   }
 
-  var promedios = [];
-  for (var k = 0; k < 4; k++) {
-    promedios.push(counts[k] > 0 ? parseFloat((sumas[k] / counts[k]).toFixed(2)) : 0);
-  }
-
-  chartExclusivoInstance = new Chart(canvas, {
-    type: 'bar',
+  // Renderizar Radar Chart
+  chartDimensionesInstance = new Chart(canvas, {
+    type: 'radar',
     data: {
-      labels: chartLabels,
-      datasets: [{ label: 'Promedio (escala 1-4)', backgroundColor: barColor, borderColor: barColor, borderRadius: 6, data: promedios }]
+      labels: labels,
+      datasets: [{
+        label: 'Promedio (1-4)',
+        data: promedios,
+        backgroundColor: bgColor,
+        borderColor: borderColor,
+        borderWidth: 2.5,
+        pointBackgroundColor: borderColor,
+        pointBorderColor: '#fff',
+        pointBorderWidth: 2,
+        pointRadius: 5,
+        pointHoverRadius: 7
+      }]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
       scales: {
-        x: { grid: { display: false }, ticks: { font: { size: 11, family: 'Inter, sans-serif' } } },
-        y: { min: 0, max: 4, ticks: { stepSize: 1, font: { size: 11 } }, grid: { color: '#f1f5f9' } }
+        r: {
+          min: 0,
+          max: 4,
+          ticks: {
+            stepSize: 1,
+            backdropColor: 'transparent',
+            font: { size: 10, family: 'Inter, sans-serif' },
+            color: '#94a3b8'
+          },
+          grid: { color: '#e2e8f0' },
+          angleLines: { color: '#e2e8f0' },
+          pointLabels: {
+            font: { size: 11, family: 'Inter, sans-serif', weight: '600' },
+            color: '#475569'
+          }
+        }
       },
       plugins: {
         legend: { display: false },
-        tooltip: { backgroundColor: '#1e293b', cornerRadius: 8, padding: 10,
-          callbacks: { label: function(ctx) { return ' Promedio: ' + ctx.raw + ' / 4'; } }
+        tooltip: {
+          backgroundColor: '#1e293b',
+          cornerRadius: 8,
+          padding: 12,
+          titleFont: { size: 13, family: 'Inter, sans-serif' },
+          bodyFont: { size: 12, family: 'Inter, sans-serif' },
+          callbacks: {
+            label: function(ctx) { return ' Promedio: ' + ctx.raw + ' / 4'; }
+          }
         }
       }
     }
