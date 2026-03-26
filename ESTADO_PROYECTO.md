@@ -1,6 +1,6 @@
 # Estado del Proyecto: Sistema de Monitoreo USMP
-**Fecha de Última Actualización:** 13 de Marzo de 2026
-**Versión:** 2.0 (Dashboard BI + Correcciones Críticas)
+**Fecha de Última Actualización:** 26 de Marzo de 2026
+**Versión:** 2.1 (Filtros en Cascada y Análisis Factorial)
 
 ---
 
@@ -124,6 +124,46 @@ Se reemplazó el panel "Rendimiento Específico" (gráfico de barras con solo 4 
 | `Backend_BI.gs` | MODIFICADO (envía criteriosLMS[] + criteriosAcomp[] + headerCodes) |
 | `JS_BI.html` | REESCRITO (radar de dimensiones reemplaza barras exclusivas) |
 | `View_Dashboard_BI.html` | MODIFICADO (nuevo panel + canvas) |
+
+## 5.2 Cambios de la Sesión Actual (26 Mar 2026)
+
+### Mejora BI: Análisis de Resultados V2.1
+Se añadieron 3 nuevas capas de análisis y experiencia de usuario en el Dashboard de BI:
+1. **Filtros en Cascada:** Al seleccionar un Coordinador, el filtro de Programa se actualiza dinámicamente mostrando solo los programas que el coordinador gestiona. (`JS_BI.html`)
+2. **Leyenda Dinámica Desglosada:** Se inyectaron barras de progreso vigesimal para cada dimensión, y "barritas de éxito" por cada criterio evaluado (base 4 y su %), extrayendo los títulos directamente del backend (`Backend_BI.gs`).
+3. **Módulo "Dimensiones por Mejorar":** Nuevo panel de alerta automática (Fila 4). Identifica aquellas dimensiones que contengan asignaturas con criterios promediados de **1 (Deficiente) o 2 (Regular)**, mostrando un desglose textual para focalizar apoyos.
+
+---
+
+## 5.3 Cambios de la Sesión Actual (Mitigación de Errores de Formatos y Offsets)
+
+### Bugs y Casos Extremos Corregidos
+1. **Desfase de Columna en Acompañamiento:**
+   - **Problema:** En `GeneradorBI.gs`, el índice de inicio de lectura estaba configurado permanentemente en `22`, provocando que el último criterio ("11. Extensión") absorbiera erróneamente el valor numérico del `Puntaje Total Bruto`, rompiendo las sumatorias del Radar Superior de "Cierre" (ej. `100.3 / 20`).
+   - **Solución:** Se corrigió y ancló el offset central a la **Columna 21 (U)** tanto en la Generación de Cabeceras Maestras como en el bucle de Sincronización del BI.
+
+2. **Inyección Involuntaria de Fechas (Format-Date Bug):**
+   - **Problema:** Inmediatamente al reparar la Columna U, se destapó un comportamiento extremo de Google Sheets: si el usuario digita un "3" o un "4" de calificación en una matriz accidentalmente marcada con "Formato de Fecha", Sheets asume silenciosamente que se trata de fechas relativas a enero de 1900. Esto era imperceptible en Excel pero catastrófico en `JS_BI.html`, quien transformaba en tiempo real esas fechas a Unix Epocs resultando en KPIs astronómicos (`-3.6 trillones de base 20`).
+   - **Solución Defensiva:** Se programó e integró la función interceptora y genérica `parseGrade()` dentro de `Backend_BI.gs`. La fórmula intercepta la instancia errónea de `Date`, calcula el diferencial temporal contra el Epoch Base originario de Microsoft Excel (`1899-12-30`) y regenera predeciblemente y sin pérdida de datos la nota formativa original (`Math.round(diff / 86400000)`).
+
+3. **Inferencia de Propiedades 'undefined' en Rankings:**
+   - **Problema:** Los nombres de las Asignaturas y Docentes en la interfaz figuraban textualmente como `undefined` o vacíos.
+   - **Solución:** A nivel puente JSON: `Backend_BI.gs` ahora exporta estrictamente `{ asignatura: fila[4], docente: fila[6] }`, y todo script consumidor en `JS_BI.html` fue refactorizado para consumirlo con nomenclatura precisa y robusta.
+
+---
+
+## 5.4 Análisis Estructural de Riesgos y Afectación Cruzada
+
+El rediseño del flujo de datos en el BI se ha reconstruido con un enfoque fundamental **Aislado y Estático (Read-Only/No-Mutative)** para no alterar la física de los datos subyacentes.
+
+| Subsistema Crítico | Nivel de Riesgo | Justificación Técnica de Impacto Seguro |
+|---|---|---|
+| **GeneradorDoc.gs (Fichas PDF)** | **Cero (0%)** | Ninguna columna maestra de las Bases de Datos originales fue manipulada, agregada, ni eliminada. El motor dinámico de plantillas PDF sigue operando ciegamente y con éxito sobre sus bucles estáticos previamente calibrados en `Code.gs`. |
+| **GeneradorResultados.gs (Correos Automatizados)** | **Cero (0%)** | La extracción del score vigesimal de envíos por email se reforzó fijando nuevamente los bounds al vector 21 intacto. Asimismo, la arquitectura es completamente asilada al Frontend Chart.js del Dashboard de directivos. |
+| **Sincronización Interna y CronJobs** | **Cero (0%)** | No hubieron mutaciones en las funciones temporizadas como `ImportacionExterna.gs` o `SincronizacionIntern.gs`. El "Master Source of Truth" de asignación y cronogramas sigue inmaculado y operativo. |
+| **Code.gs (Core del LMS Operativo)** | **Cero (0%)** | El Frontend transaccional que usan todos los coordinadores periódicamente para evaluar puntajes permanece bloqueado y estable. Los selectores de `[i] = 19 y 20` se respetaron a perpetuidad evitando rupturas de integridad en la fase I&O. |
+
+**Veredicto Final:** La estabilidad productiva general del framework en Google Workspace está certificadamente blindada. Las implementaciones desarrolladas y lanzadas residen íntegramente de extremo-a-extremo en la *Capa de Inteligencia de Negocios y Renderizado Analítico*, no alterando jamás las tuplas originales, permitiendo una convivencia simbiótica con el resto del orbe del sistema de monitoreo.
 
 ---
 

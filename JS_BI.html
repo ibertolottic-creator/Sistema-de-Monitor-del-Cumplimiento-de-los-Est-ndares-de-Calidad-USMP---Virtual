@@ -11,7 +11,9 @@
  */
 var biDataGlobal = [];
 var biHeadersLMS = [];
+var biTitlesLMS = [];
 var biHeadersAcomp = [];
+var biTitlesAcomp = [];
 var chartDistribucionInstance = null;
 var chartDimensionesInstance = null;
 
@@ -103,7 +105,9 @@ function cargarDataSabanaBI() {
 
       biDataGlobal = res.biData || [];
       biHeadersLMS = res.headerCodesLMS || [];
+      biTitlesLMS = res.headerTitlesLMS || [];
       biHeadersAcomp = res.headerCodesAcomp || [];
+      biTitlesAcomp = res.headerTitlesAcomp || [];
       
       popularFiltrosBI(biDataGlobal);
       
@@ -120,7 +124,7 @@ function cargarDataSabanaBI() {
     .getSabanaBIData();
 }
 
-/** Puebla los menus de filtros dinamicos */
+/** Puebla los menus de filtros dinamicos (con lógica en cascada) */
 function popularFiltrosBI(data) {
   var selectProg = document.getElementById('filtroBiPrograma');
   var selectCoord = document.getElementById('filtroBiCoordinador');
@@ -130,37 +134,82 @@ function popularFiltrosBI(data) {
   var valProg = selectProg.value;
   var valCoord = selectCoord.value;
   
-  var programas = {};
+  // Coordinadores
   var coordinadores = {};
-  
   for(var i=0; i<data.length; i++) {
-     if(data[i].programa) programas[data[i].programa] = true;
      if(data[i].coordinador) coordinadores[data[i].coordinador] = true;
   }
-  
-  var progArr = Object.keys(programas).sort();
   var coordArr = Object.keys(coordinadores).sort();
+  var htmlCoord = '<option value="TODOS">Todos los Coordinadores</option>';
+  for(var i=0; i<coordArr.length; i++) {
+     htmlCoord += '<option value="'+coordArr[i]+'">'+coordArr[i]+'</option>';
+  }
+  selectCoord.innerHTML = htmlCoord;
+  if(valCoord && valCoord !== 'TODOS' && coordinadores[valCoord]) {
+    selectCoord.value = valCoord;
+  } else {
+    valCoord = 'TODOS';
+  }
+
+  // Programas (Filtrados por coordinador)
+  var dataProg = data;
+  if (valCoord !== 'TODOS') {
+    dataProg = data.filter(function(d) { return d.coordinador === valCoord; });
+  }
   
-  var htmlProg = '<option value="TODOS" selected>Todos los Programas</option>';
+  var programas = {};
+  for(var i=0; i<dataProg.length; i++) {
+     if(dataProg[i].programa) programas[dataProg[i].programa] = true;
+  }
+  var progArr = Object.keys(programas).sort();
+  var htmlProg = '<option value="TODOS">Todos los Programas</option>';
   for(var i=0; i<progArr.length; i++) {
      htmlProg += '<option value="'+progArr[i]+'">'+progArr[i]+'</option>';
   }
   selectProg.innerHTML = htmlProg;
   
-  var htmlCoord = '<option value="TODOS" selected>Todos los Coordinadores</option>';
-  for(var i=0; i<coordArr.length; i++) {
-     htmlCoord += '<option value="'+coordArr[i]+'">'+coordArr[i]+'</option>';
+  if(valProg && valProg !== 'TODOS' && programas[valProg]) {
+    selectProg.value = valProg;
+  } else {
+    selectProg.value = 'TODOS';
   }
-  selectCoord.innerHTML = htmlCoord;
-  
-  if(valProg && valProg !== 'TODOS') selectProg.value = valProg;
-  if(valCoord && valCoord !== 'TODOS') selectCoord.value = valCoord;
 }
 
-/** Renderiza el dashboard con datos filtrados */
+/** Manejador de cambio del filtro de Coordinador para la cascada */
+function onChangeFiltroCoordinadorBI() {
+  popularFiltrosBI(biDataGlobal);
+  renderBiDashboard();
+}
+
+var currentBiTab = 'GENERAL';
+var biChartInstances = {};
+
+function switchBiTab(tab) {
+  currentBiTab = tab;
+  var tags = ['general', 'lms', 'acomp'];
+  for(var i=0; i<tags.length; i++) {
+    var isA = (tab === tags[i].toUpperCase());
+    var btn = document.getElementById('bi-tab-btn-' + tags[i]);
+    var v = document.getElementById('bi-view-' + tags[i]);
+    if(btn) {
+      if(isA) {
+        btn.style.color = '#3b82f6'; btn.style.borderBottomColor = '#3b82f6'; btn.style.fontWeight = '700';
+      } else {
+        btn.style.color = '#64748b'; btn.style.borderBottomColor = 'transparent'; btn.style.fontWeight = '600';
+      }
+    }
+    if(v) v.style.display = isA ? 'block' : 'none';
+  }
+  renderBiDashboard();
+}
+
 function renderBiDashboard() {
   if (!biDataGlobal || biDataGlobal.length === 0) {
-    document.getElementById('kpi-bi-docentes').textContent = '0';
+    var els = ['docentes', 'vigesimal', 'lms', 'acomp'];
+    for(var i=0; i<els.length; i++) {
+      var kpi = document.getElementById('kpi-bi-' + els[i]);
+      if (kpi) kpi.textContent = els[i] === 'docentes' ? '0' : '-';
+    }
     return;
   }
 
@@ -170,94 +219,22 @@ function renderBiDashboard() {
   var filtroProg = elProg ? elProg.value : 'TODOS';
   var filtroCoord = elCoord ? elCoord.value : 'TODOS';
 
-  // Filtrar
   var dataFiltrada = biDataGlobal;
   
-  // 1. Modalidad
-  if (filtroMod === 'VIRTUAL_HIBRIDO') {
-    dataFiltrada = dataFiltrada.filter(function(d) { return d.modalidad !== 'PRESENCIAL'; });
-  } else if (filtroMod === 'PRESENCIAL') {
-    dataFiltrada = dataFiltrada.filter(function(d) { return d.modalidad === 'PRESENCIAL'; });
-  }
+  if (filtroMod === 'VIRTUAL_HIBRIDO') dataFiltrada = dataFiltrada.filter(function(d) { return d.modalidad !== 'PRESENCIAL'; });
+  else if (filtroMod === 'PRESENCIAL') dataFiltrada = dataFiltrada.filter(function(d) { return d.modalidad === 'PRESENCIAL'; });
   
-  // 2. Programa
-  if (filtroProg !== 'TODOS') {
-    dataFiltrada = dataFiltrada.filter(function(d) { return d.programa === filtroProg; });
-  }
-  
-  // 3. Coordinador
-  if (filtroCoord !== 'TODOS') {
-    dataFiltrada = dataFiltrada.filter(function(d) { return d.coordinador === filtroCoord; });
-  }
+  if (filtroProg !== 'TODOS') dataFiltrada = dataFiltrada.filter(function(d) { return d.programa === filtroProg; });
+  if (filtroCoord !== 'TODOS') dataFiltrada = dataFiltrada.filter(function(d) { return d.coordinador === filtroCoord; });
 
-  // Calcular KPIs
-  var sumProm = 0, sumLMS = 0, sumAcomp = 0;
-  var cntProm = 0, cntLMS = 0, cntAcomp = 0;
-
-  var distNiveles = { 'Muy Bueno (17-20)': 0, 'Bueno (14-16)': 0, 'Regular (11-13)': 0, 'Deficiente (≤10)': 0 };
-
-  for (var i = 0; i < dataFiltrada.length; i++) {
-    var doc = dataFiltrada[i];
-    if (doc.promedio > 0) { sumProm += doc.promedio; cntProm++; }
-    if (doc.ptsLMS > 0)   { sumLMS += doc.ptsLMS; cntLMS++; }
-    if (doc.ptsAcomp > 0) { sumAcomp += doc.ptsAcomp; cntAcomp++; }
-
-    if (doc.promedio > 0) {
-      if (doc.promedio >= 17) distNiveles['Muy Bueno (17-20)']++;
-      else if (doc.promedio >= 14) distNiveles['Bueno (14-16)']++;
-      else if (doc.promedio >= 11) distNiveles['Regular (11-13)']++;
-      else distNiveles['Deficiente (≤10)']++;
-    }
-  }
-
-  // Pintar KPIs
-  document.getElementById('kpi-bi-docentes').textContent = dataFiltrada.length;
-  document.getElementById('kpi-bi-vigesimal').textContent = cntProm > 0 ? (sumProm / cntProm).toFixed(2) : '-';
-  document.getElementById('kpi-bi-lms').textContent = cntLMS > 0 ? (sumLMS / cntLMS).toFixed(2) : '-';
-  document.getElementById('kpi-bi-acomp').textContent = cntAcomp > 0 ? (sumAcomp / cntAcomp).toFixed(2) : '-';
-
-  renderChartDistribucion(distNiveles);
-  renderPanelDimensiones(filtroMod, dataFiltrada);
+  if (currentBiTab === 'GENERAL') renderBiViewGeneral(dataFiltrada, filtroMod);
+  else if (currentBiTab === 'LMS') renderBiViewLms(dataFiltrada, filtroMod);
+  else if (currentBiTab === 'ACOMP') renderBiViewAcomp(dataFiltrada, filtroMod);
 }
 
 // ---------------------------------------------------------------
-// GRÁFICOS CHART.JS
+// AUXILIARES
 // ---------------------------------------------------------------
-
-function renderChartDistribucion(distNiveles) {
-  var ctx = document.getElementById('chartBiDistribucion');
-  if (!ctx) return;
-  if (chartDistribucionInstance) chartDistribucionInstance.destroy();
-
-  var labels = Object.keys(distNiveles);
-  var data = Object.values(distNiveles);
-
-  chartDistribucionInstance = new Chart(ctx, {
-    type: 'doughnut',
-    data: {
-      labels: labels,
-      datasets: [{ data: data, backgroundColor: [BI_COLORS.green, BI_COLORS.blue, BI_COLORS.yellow, BI_COLORS.red], borderWidth: 2, hoverBorderColor: '#fff' }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      cutout: '65%',
-      plugins: {
-        legend: { display: true, position: 'right', labels: { usePointStyle: true, padding: 15, font: { size: 12, family: 'Inter, sans-serif' } } },
-        tooltip: { backgroundColor: '#1e293b', titleFont: { size: 13 }, bodyFont: { size: 12 }, padding: 12, cornerRadius: 8 }
-      }
-    }
-  });
-}
-
-// ---------------------------------------------------------------
-// PANEL DIMENSIONES (RADAR CHART)
-// ---------------------------------------------------------------
-
-/**
- * Calcula el promedio de un conjunto de índices LMS para un array de docentes.
- * Retorna un valor entre 1 y 4 (o 0 si no hay datos).
- */
 function calcularPromedioDimension(dataFiltrada, indices, campoArray) {
   var suma = 0, count = 0;
   for (var i = 0; i < dataFiltrada.length; i++) {
@@ -274,154 +251,534 @@ function calcularPromedioDimension(dataFiltrada, indices, campoArray) {
   return count > 0 ? parseFloat((suma / count).toFixed(2)) : 0;
 }
 
-function renderPanelDimensiones(modalidadActiva, dataFiltrada) {
-  var title = document.getElementById('bi-dinamico-title');
-  var badge = document.getElementById('bi-dinamico-badge');
-  var helper = document.getElementById('bi-dinamico-helper');
-  var canvas = document.getElementById('chartBiDimensiones');
+function createOrUpdateBiChart(chartId, type, labels, data, colors) {
+  var canvas = document.getElementById(chartId);
+  if(!canvas) return;
+  if(biChartInstances[chartId]) { biChartInstances[chartId].destroy(); }
+  
+  var ds = { data: data };
+  if(type === 'doughnut') {
+    ds.backgroundColor = colors;
+    ds.borderWidth = 2; ds.hoverBorderColor = '#fff';
+  } else if(type === 'radar') {
+    ds.label = 'Promedio (1-4)';
+    ds.backgroundColor = colors.bg;
+    ds.borderColor = colors.border;
+    ds.borderWidth = 2.5; ds.pointBackgroundColor = colors.border;
+    ds.pointBorderColor = '#fff'; ds.pointBorderWidth = 2; ds.pointRadius = 5; ds.pointHoverRadius = 7;
+  }
+  
+  var defaultOptions = {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { display: type==='doughnut', position:'right', labels:{usePointStyle:true, padding:15, font:{size:11, family:'Inter, sans-serif'}} }, tooltip: { backgroundColor: '#1e293b', padding:12, cornerRadius:8 } }
+  };
+  
+  if(type === 'radar') {
+    defaultOptions.plugins.legend.display = false;
+    defaultOptions.scales = { r: { min:0, max:4, ticks: {stepSize:1, backdropColor:'transparent', color:'#94a3b8', font:{size:10, family:'Inter'}}, grid:{color:'#e2e8f0'}, angleLines:{color:'#e2e8f0'}, pointLabels:{font:{size:10, family:'Inter', weight:'600'}, color:'#475569'} } };
+    defaultOptions.plugins.tooltip.callbacks = { label: function(ctx){ return ' Promedio: '+ctx.raw+' / 4'; } };
+  }
+  if(type === 'doughnut') {
+    defaultOptions.cutout = '65%';
+  }
+  
+  biChartInstances[chartId] = new Chart(canvas, { type: type, data: { labels: labels, datasets: [ds] }, options: defaultOptions });
+}
 
-  if (chartDimensionesInstance) { chartDimensionesInstance.destroy(); chartDimensionesInstance = null; }
+// ---------------------------------------------------------------
+// VISTA 1: GENERAL
+// ---------------------------------------------------------------
+function renderBiViewGeneral(dataFiltrada, modalidad) {
+  var sumProm=0, sumLMS=0, sumAcomp=0;
+  var cntProm=0, cntLMS=0, cntAcomp=0;
+  var distNiveles = { 'Muy Bueno (17-20)':0, 'Bueno (14-16)':0, 'Regular (11-13)':0, 'Deficiente (≤10)':0 };
 
-  helper.style.display = 'none';
-  canvas.style.display = 'block';
-
-  var labels = [];
-  var promedios = [];
-  var bgColor = '';
-  var borderColor = '';
-
-  if (modalidadActiva === 'VIRTUAL_HIBRIDO') {
-    title.innerHTML = '<i class="fa-solid fa-diagram-project" style="color:#3b82f6;margin-right:6px;"></i>Rendimiento por Dimensiones';
-    badge.textContent = 'Virtual / Híbrida';
-    badge.style.background = '#dbeafe'; badge.style.color = '#1d4ed8';
-    bgColor = 'rgba(37,99,235,0.15)';
-    borderColor = BI_COLORS.virtual;
-
-    var dimKeys = Object.keys(DIMENSIONES_VIRTUAL);
-    for (var k = 0; k < dimKeys.length; k++) {
-      var dim = DIMENSIONES_VIRTUAL[dimKeys[k]];
-      labels.push(dim.nombre);
-      promedios.push(calcularPromedioDimension(dataFiltrada, dim.indices, 'criteriosLMS'));
-    }
-
-  } else if (modalidadActiva === 'PRESENCIAL') {
-    title.innerHTML = '<i class="fa-solid fa-diagram-project" style="color:#7c3aed;margin-right:6px;"></i>Rendimiento por Dimensiones';
-    badge.textContent = 'Presencial';
-    badge.style.background = '#ede9fe'; badge.style.color = '#6d28d9';
-    bgColor = 'rgba(124,58,237,0.15)';
-    borderColor = BI_COLORS.presencial;
-
-    var dimKeys = Object.keys(DIMENSIONES_PRESENCIAL);
-    for (var k = 0; k < dimKeys.length; k++) {
-      var dim = DIMENSIONES_PRESENCIAL[dimKeys[k]];
-      labels.push(dim.nombre);
-      promedios.push(calcularPromedioDimension(dataFiltrada, dim.indices, 'criteriosLMS'));
-    }
-
-  } else {
-    // TODAS: combinar Virtual y Presencial en un solo radar unificado
-    title.innerHTML = '<i class="fa-solid fa-diagram-project" style="color:#06b6d4;margin-right:6px;"></i>Rendimiento por Dimensiones';
-    badge.textContent = 'Todas las Modalidades';
-    badge.style.background = '#ecfdf5'; badge.style.color = '#059669';
-    bgColor = 'rgba(6,182,212,0.15)';
-    borderColor = BI_COLORS.cyan;
-
-    var dataV = dataFiltrada.filter(function(d) { return d.modalidad !== 'PRESENCIAL'; });
-    var dataP = dataFiltrada.filter(function(d) { return d.modalidad === 'PRESENCIAL'; });
-
-    var dimKeys = Object.keys(DIMENSIONES_TODAS);
-    for (var k = 0; k < dimKeys.length; k++) {
-      var dim = DIMENSIONES_TODAS[dimKeys[k]];
-      labels.push(dim.nombre);
-
-      // Calcular promedio combinado: Virtual usa indicesV, Presencial usa indicesP
-      var sumaTotal = 0, countTotal = 0;
-
-      // Virtual
-      if (dim.indicesV && dim.indicesV.length > 0) {
-        for (var i = 0; i < dataV.length; i++) {
-          var arr = dataV[i].criteriosLMS;
-          if (!arr) continue;
-          for (var j = 0; j < dim.indicesV.length; j++) {
-            var idx = dim.indicesV[j];
-            if (idx < arr.length && arr[idx] !== null && arr[idx] !== undefined) {
-              sumaTotal += arr[idx]; countTotal++;
-            }
-          }
-        }
-      }
-
-      // Presencial
-      if (dim.indicesP && dim.indicesP.length > 0) {
-        for (var i = 0; i < dataP.length; i++) {
-          var arr = dataP[i].criteriosLMS;
-          if (!arr) continue;
-          for (var j = 0; j < dim.indicesP.length; j++) {
-            var idx = dim.indicesP[j];
-            if (idx < arr.length && arr[idx] !== null && arr[idx] !== undefined) {
-              sumaTotal += arr[idx]; countTotal++;
-            }
-          }
-        }
-      }
-
-      promedios.push(countTotal > 0 ? parseFloat((sumaTotal / countTotal).toFixed(2)) : 0);
+  for (var i = 0; i < dataFiltrada.length; i++) {
+    var doc = dataFiltrada[i];
+    if (doc.promedio > 0) { sumProm += doc.promedio; cntProm++; }
+    if (doc.ptsLMS > 0)   { sumLMS += doc.ptsLMS; cntLMS++; }
+    if (doc.ptsAcomp > 0) { sumAcomp += doc.ptsAcomp; cntAcomp++; }
+    if (doc.promedio > 0) {
+      if (doc.promedio >= 17) distNiveles['Muy Bueno (17-20)']++;
+      else if (doc.promedio >= 14) distNiveles['Bueno (14-16)']++;
+      else if (doc.promedio >= 11) distNiveles['Regular (11-13)']++;
+      else distNiveles['Deficiente (≤10)']++;
     }
   }
 
-  // Renderizar Radar Chart
-  chartDimensionesInstance = new Chart(canvas, {
-    type: 'radar',
-    data: {
-      labels: labels,
-      datasets: [{
-        label: 'Promedio (1-4)',
-        data: promedios,
-        backgroundColor: bgColor,
-        borderColor: borderColor,
-        borderWidth: 2.5,
-        pointBackgroundColor: borderColor,
-        pointBorderColor: '#fff',
-        pointBorderWidth: 2,
-        pointRadius: 5,
-        pointHoverRadius: 7
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      scales: {
-        r: {
-          min: 0,
-          max: 4,
-          ticks: {
-            stepSize: 1,
-            backdropColor: 'transparent',
-            font: { size: 10, family: 'Inter, sans-serif' },
-            color: '#94a3b8'
-          },
-          grid: { color: '#e2e8f0' },
-          angleLines: { color: '#e2e8f0' },
-          pointLabels: {
-            font: { size: 11, family: 'Inter, sans-serif', weight: '600' },
-            color: '#475569'
-          }
-        }
-      },
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          backgroundColor: '#1e293b',
-          cornerRadius: 8,
-          padding: 12,
-          titleFont: { size: 13, family: 'Inter, sans-serif' },
-          bodyFont: { size: 12, family: 'Inter, sans-serif' },
-          callbacks: {
-            label: function(ctx) { return ' Promedio: ' + ctx.raw + ' / 4'; }
+  // KPIs
+  var kpiD = document.getElementById('bi-kpis-general');
+  if(kpiD) {
+    kpiD.innerHTML = '<div style="background:#fff; padding:20px; border-radius:12px; border:1px solid #e2e8f0; border-left:5px solid #3b82f6;"><p style="margin:0 0 4px; font-size:11px; font-weight:700; color:#3b82f6; text-transform:uppercase;">Asignaturas Evaluadas</p><p style="margin:0; font-size:28px; font-weight:800; color:#1e293b;">'+dataFiltrada.length+'</p></div>' +
+                     '<div style="background:#fff; padding:20px; border-radius:12px; border:1px solid #e2e8f0; border-left:5px solid #10b981;"><p style="margin:0 0 4px; font-size:11px; font-weight:700; color:#10b981; text-transform:uppercase;">Promedio General</p><p style="margin:0; font-size:28px; font-weight:800; color:#1e293b;">'+(cntProm>0 ? (sumProm/cntProm).toFixed(2) : '-')+'</p></div>' +
+                     '<div style="background:#fff; padding:20px; border-radius:12px; border:1px solid #e2e8f0; border-left:5px solid #06b6d4;"><p style="margin:0 0 4px; font-size:11px; font-weight:700; color:#06b6d4; text-transform:uppercase;">Promedio LMS</p><p style="margin:0; font-size:28px; font-weight:800; color:#1e293b;">'+(cntLMS>0 ? (sumLMS/cntLMS).toFixed(2) : '-')+'</p></div>' +
+                     '<div style="background:#fff; padding:20px; border-radius:12px; border:1px solid #e2e8f0; border-left:5px solid #f59e0b;"><p style="margin:0 0 4px; font-size:11px; font-weight:700; color:#f59e0b; text-transform:uppercase;">Promedio Acompañamiento</p><p style="margin:0; font-size:28px; font-weight:800; color:#1e293b;">'+(cntAcomp>0 ? (sumAcomp/cntAcomp).toFixed(2) : '-')+'</p></div>';
+  }
+
+  // Dist Gral
+  createOrUpdateBiChart('chartBiDistGral', 'doughnut', Object.keys(distNiveles), Object.values(distNiveles), [BI_COLORS.green, BI_COLORS.blue, BI_COLORS.yellow, BI_COLORS.red]);
+
+  // Radar LMS Gral
+  var lmsLabels=[], lmsProms=[];
+  var dimKeysLMS = modalidad === 'PRESENCIAL' ? Object.keys(DIMENSIONES_PRESENCIAL) : Object.keys(DIMENSIONES_TODAS);
+  var dimsMapLMS = modalidad === 'PRESENCIAL' ? DIMENSIONES_PRESENCIAL : DIMENSIONES_TODAS;
+  for(var k=0; k<dimKeysLMS.length; k++) {
+    var dim = dimsMapLMS[dimKeysLMS[k]];
+    lmsLabels.push(dim.nombre);
+    if(modalidad === 'TODAS') {
+      var dV = dataFiltrada.filter(function(d){return d.modalidad !== 'PRESENCIAL';});
+      var dP = dataFiltrada.filter(function(d){return d.modalidad === 'PRESENCIAL';});
+      var sTotal=0, cTotal=0;
+      if(dim.indicesV && dim.indicesV.length>0) {
+        for(var x=0; x<dV.length; x++){
+          if(!dV[x].criteriosLMS) continue;
+          for(var y=0; y<dim.indicesV.length; y++){
+            var val = dV[x].criteriosLMS[dim.indicesV[y]];
+            if(val) { sTotal+=val; cTotal++; }
           }
         }
       }
+      if(dim.indicesP && dim.indicesP.length>0) {
+        for(var x=0; x<dP.length; x++){
+          if(!dP[x].criteriosLMS) continue;
+          for(var y=0; y<dim.indicesP.length; y++){
+            var val = dP[x].criteriosLMS[dim.indicesP[y]];
+            if(val) { sTotal+=val; cTotal++; }
+          }
+        }
+      }
+      lmsProms.push(cTotal > 0 ? parseFloat((sTotal/cTotal).toFixed(2)) : 0);
+    } else {
+      lmsProms.push(calcularPromedioDimension(dataFiltrada, dim.indices, 'criteriosLMS'));
     }
-  });
+  }
+  createOrUpdateBiChart('chartBiRadarLmsGral', 'radar', lmsLabels, lmsProms, {bg:'rgba(6,182,212,0.15)', border:BI_COLORS.cyan});
+
+  // Radar Acomp Gral
+  var acLabels=[], acProms=[];
+  var dimKeysAC = Object.keys(DIMENSIONES_ACOMP);
+  for(var k=0; k<dimKeysAC.length; k++) {
+    var dim = DIMENSIONES_ACOMP[dimKeysAC[k]];
+    acLabels.push(dim.nombre);
+    acProms.push(calcularPromedioDimension(dataFiltrada, dim.indices, 'criteriosAcomp'));
+  }
+  createOrUpdateBiChart('chartBiRadarAcompGral', 'radar', acLabels, acProms, {bg:'rgba(245,158,11,0.15)', border:BI_COLORS.yellow});
+
+  renderRankingBi(dataFiltrada);
+  renderListaAgrupadaGeneral(dataFiltrada);
 }
+
+// ---------------------------------------------------------------
+// VISTA 2: LMS
+// ---------------------------------------------------------------
+function renderBiViewLms(dataFiltrada, modalidad) {
+  var sumLMS=0, cntLMS=0;
+  var distNiveles = { 'Muy Bueno (17-20)':0, 'Bueno (14-16)':0, 'Regular (11-13)':0, 'Deficiente (≤10)':0 };
+
+  for (var i = 0; i < dataFiltrada.length; i++) {
+    var doc = dataFiltrada[i];
+    if (doc.ptsLMS > 0) { 
+      sumLMS += doc.ptsLMS; cntLMS++;
+      if (doc.ptsLMS >= 17) distNiveles['Muy Bueno (17-20)']++;
+      else if (doc.ptsLMS >= 14) distNiveles['Bueno (14-16)']++;
+      else if (doc.ptsLMS >= 11) distNiveles['Regular (11-13)']++;
+      else distNiveles['Deficiente (≤10)']++;
+    }
+  }
+
+  // KPIs
+  var kpiD = document.getElementById('bi-kpis-lms');
+  if(kpiD) {
+    kpiD.innerHTML = '<div style="background:#fff; padding:20px; border-radius:12px; border:1px solid #e2e8f0; border-left:5px solid #06b6d4;"><p style="margin:0 0 4px; font-size:11px; font-weight:700; color:#06b6d4; text-transform:uppercase;">Asignaturas Evaluadas (LMS)</p><p style="margin:0; font-size:28px; font-weight:800; color:#1e293b;">'+dataFiltrada.length+'</p></div>' +
+                     '<div style="background:#fff; padding:20px; border-radius:12px; border:1px solid #e2e8f0; border-left:5px solid #0284c7;"><p style="margin:0 0 4px; font-size:11px; font-weight:700; color:#0284c7; text-transform:uppercase;">Promedio LMS (Base 20)</p><p style="margin:0; font-size:28px; font-weight:800; color:#1e293b;">'+(cntLMS>0 ? (sumLMS/cntLMS).toFixed(2) : '-')+'</p></div>';
+  }
+
+  createOrUpdateBiChart('chartBiDistLms', 'doughnut', Object.keys(distNiveles), Object.values(distNiveles), [BI_COLORS.green, BI_COLORS.blue, BI_COLORS.yellow, BI_COLORS.red]);
+
+  // Radar LMS Expandido
+  var lmsLabels=[], lmsProms=[];
+  var dimKeysLMS = modalidad === 'PRESENCIAL' ? Object.keys(DIMENSIONES_PRESENCIAL) : Object.keys(DIMENSIONES_TODAS);
+  var dimsMapLMS = modalidad === 'PRESENCIAL' ? DIMENSIONES_PRESENCIAL : DIMENSIONES_TODAS;
+  for(var k=0; k<dimKeysLMS.length; k++) {
+    var dim = dimsMapLMS[dimKeysLMS[k]];
+    lmsLabels.push(dim.nombre);
+    if(modalidad === 'TODAS') {
+      var dV = dataFiltrada.filter(function(d){return d.modalidad !== 'PRESENCIAL';});
+      var dP = dataFiltrada.filter(function(d){return d.modalidad === 'PRESENCIAL';});
+      var sTotal=0, cTotal=0;
+      if(dim.indicesV && dim.indicesV.length>0) {
+        for(var x=0; x<dV.length; x++){ if(dV[x].criteriosLMS) { for(var y=0; y<dim.indicesV.length; y++){ var v=dV[x].criteriosLMS[dim.indicesV[y]]; if(v){sTotal+=v;cTotal++;} } } }
+      }
+      if(dim.indicesP && dim.indicesP.length>0) {
+        for(var x=0; x<dP.length; x++){ if(dP[x].criteriosLMS) { for(var y=0; y<dim.indicesP.length; y++){ var v=dP[x].criteriosLMS[dim.indicesP[y]]; if(v){sTotal+=v;cTotal++;} } } }
+      }
+      lmsProms.push(cTotal > 0 ? parseFloat((sTotal/cTotal).toFixed(2)) : 0);
+    } else {
+      lmsProms.push(calcularPromedioDimension(dataFiltrada, dim.indices, 'criteriosLMS'));
+    }
+  }
+  createOrUpdateBiChart('chartBiRadarLms', 'radar', lmsLabels, lmsProms, {bg:'rgba(6,182,212,0.15)', border:BI_COLORS.cyan});
+  
+  var bdg = document.getElementById('bi-badge-lms');
+  if(bdg) bdg.textContent = modalidad === 'PRESENCIAL' ? 'Presencial' : (modalidad === 'VIRTUAL_HIBRIDO' ? 'Virtual / Híbrida' : 'Todas las Modalidades');
+
+  renderLeyendaDimensiones(dataFiltrada, modalidad);
+  renderDimensionesPorMejorarLms(dataFiltrada, modalidad);
+  renderListaCritica('bi-criticos-lms', dataFiltrada, 'LMS');
+}
+
+// ---------------------------------------------------------------
+// VISTA 3: ACOMPAÑAMIENTO
+// ---------------------------------------------------------------
+function renderBiViewAcomp(dataFiltrada, modalidad) {
+  var sumAc=0, cntAc=0;
+  var distNiveles = { 'Muy Bueno (17-20)':0, 'Bueno (14-16)':0, 'Regular (11-13)':0, 'Deficiente (≤10)':0 };
+
+  for (var i = 0; i < dataFiltrada.length; i++) {
+    var doc = dataFiltrada[i];
+    if (doc.ptsAcomp > 0) { 
+      sumAc += doc.ptsAcomp; cntAc++;
+      if (doc.ptsAcomp >= 17) distNiveles['Muy Bueno (17-20)']++;
+      else if (doc.ptsAcomp >= 14) distNiveles['Bueno (14-16)']++;
+      else if (doc.ptsAcomp >= 11) distNiveles['Regular (11-13)']++;
+      else distNiveles['Deficiente (≤10)']++;
+    }
+  }
+
+  // KPIs
+  var kpiD = document.getElementById('bi-kpis-acomp');
+  if(kpiD) {
+    kpiD.innerHTML = '<div style="background:#fff; padding:20px; border-radius:12px; border:1px solid #e2e8f0; border-left:5px solid #f59e0b;"><p style="margin:0 0 4px; font-size:11px; font-weight:700; color:#f59e0b; text-transform:uppercase;">Asignaturas Evaluadas (Acomp.)</p><p style="margin:0; font-size:28px; font-weight:800; color:#1e293b;">'+dataFiltrada.length+'</p></div>' +
+                     '<div style="background:#fff; padding:20px; border-radius:12px; border:1px solid #e2e8f0; border-left:5px solid #d97706;"><p style="margin:0 0 4px; font-size:11px; font-weight:700; color:#d97706; text-transform:uppercase;">Promedio Acompañamiento (Base 20)</p><p style="margin:0; font-size:28px; font-weight:800; color:#1e293b;">'+(cntAc>0 ? (sumAc/cntAc).toFixed(2) : '-')+'</p></div>';
+  }
+
+  createOrUpdateBiChart('chartBiDistAcomp', 'doughnut', Object.keys(distNiveles), Object.values(distNiveles), [BI_COLORS.green, BI_COLORS.blue, BI_COLORS.yellow, BI_COLORS.red]);
+
+  // Radar Acomp Expandido
+  var acLabels=[], acProms=[];
+  var dimKeysAC = Object.keys(DIMENSIONES_ACOMP);
+  for(var k=0; k<dimKeysAC.length; k++) {
+    var dim = DIMENSIONES_ACOMP[dimKeysAC[k]];
+    acLabels.push(dim.nombre);
+    acProms.push(calcularPromedioDimension(dataFiltrada, dim.indices, 'criteriosAcomp'));
+  }
+  createOrUpdateBiChart('chartBiRadarAcomp', 'radar', acLabels, acProms, {bg:'rgba(245,158,11,0.15)', border:BI_COLORS.yellow});
+
+  renderLeyendaAcomp(dataFiltrada);
+  renderDimensionesPorMejorarAcomp(dataFiltrada);
+  renderListaCritica('bi-criticos-acomp', dataFiltrada, 'ACOMP');
+}
+
+// ---------------------------------------------------------------
+// RANKINGS Y LISTAS (VISTA GENERAL)
+// ---------------------------------------------------------------
+function renderRankingBi(dataFiltrada) {
+  var container = document.getElementById('bi-rankings-general');
+  if(!container) return;
+  
+  var conPromedio = dataFiltrada.filter(function(d){ return d.promedio > 0; });
+  conPromedio.sort(function(a,b){ return b.promedio - a.promedio; });
+  
+  var top5 = conPromedio.slice(0, 5);
+  var bottom5 = conPromedio.slice(-5).reverse();
+  
+  function buildHtml(titulo, lista, colorIcono, iconoClase) {
+    var h = '<div style="background:#fff; border-radius:12px; border:1px solid #e2e8f0; padding:16px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.04);">';
+    h += '<h6 style="margin:0 0 12px; font-size:13px; font-weight:700; color:#334155;"><i class="'+iconoClase+'" style="color:'+colorIcono+'; margin-right:6px;"></i>'+titulo+'</h6>';
+    if(lista.length === 0) return h + '<p style="font-size:12px; color:#94a3b8;">Sin datos</p></div>';
+    h += '<ul style="margin:0; padding:0; list-style:none;">';
+    for(var i=0; i<lista.length; i++) {
+       var d = lista[i];
+       h += '<li style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid #f1f5f9;">';
+       h += '<div style="max-width:75%;">';
+       h += '<p style="margin:0; font-size:12px; font-weight:700; color:#1e293b; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="'+d.asignatura+'">'+d.asignatura+'</p>';
+       h += '<p style="margin:0; font-size:10px; color:#64748b;">'+d.docente+' ('+(d.programa||'Sin Prog')+')</p></div>';
+       h += '<span style="font-weight:800; font-size:13px; color:'+colorIcono+';">'+d.promedio.toFixed(2)+'</span></li>';
+    }
+    return h + '</ul></div>';
+  }
+  
+  container.innerHTML = buildHtml('Top 5 Rendimiento', top5, '#10b981', 'fa-solid fa-trophy') + buildHtml('Bottom 5 Rendimiento (Críticos)', bottom5, '#ef4444', 'fa-solid fa-circle-exclamation');
+}
+
+function renderListaAgrupadaGeneral(dataFiltrada) {
+  var container = document.getElementById('bi-lista-general');
+  if(!container) return;
+  
+  var byProg = {};
+  for(var i=0; i<dataFiltrada.length; i++) {
+    var p = dataFiltrada[i].programa || 'Sin Programa';
+    if(!byProg[p]) byProg[p] = [];
+    byProg[p].push(dataFiltrada[i]);
+  }
+  var progs = Object.keys(byProg).sort();
+  
+  var h = '<h6 style="margin:0 0 16px; font-size:14px; font-weight:700; color:#334155;"><i class="fa-solid fa-table-list" style="color:#64748b; margin-right:6px;"></i>Desempeño Detallado por Programa</h6>';
+  h += '<div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse; font-size:12px; text-align:left;">';
+  
+  for(var i=0; i<progs.length; i++) {
+    h += '<tr style="background:#f8fafc;"><td colspan="5" style="padding:10px; font-weight:800; color:#334155; border-bottom:2px solid #e2e8f0; border-top:1px solid #e2e8f0;">'+progs[i]+' <span style="font-weight:600; font-size:11px; color:#64748b; margin-left:8px;">('+byProg[progs[i]].length+' cursos)</span></td></tr>';
+    h += '<tr style="background:#fff; color:#64748b; font-size:11px; font-weight:700; text-transform:uppercase; border-bottom:1px solid #e2e8f0;">';
+    h += '<th style="padding:8px 10px;">Asignatura</th><th style="padding:8px 10px;">Docente</th><th style="padding:8px 10px;">Prom. General</th><th style="padding:8px 10px;">Prom. LMS</th><th style="padding:8px 10px;">Prom. Acomp.</th></tr>';
+    var docs = byProg[progs[i]];
+    docs.sort(function(a,b){ return b.promedio - a.promedio; });
+    
+    for(var j=0; j<docs.length; j++) {
+      var d = docs[j];
+      var pg = d.promedio > 0 ? d.promedio.toFixed(2) : '-';
+      var pl = d.ptsLMS > 0 ? d.ptsLMS.toFixed(2) : '-';
+      var pa = d.ptsAcomp > 0 ? d.ptsAcomp.toFixed(2) : '-';
+      var cG = pg === '-' ? '' : (pg>=14 ? '#10b981' : (pg>=11 ? '#f59e0b' : '#ef4444'));
+      h += '<tr style="border-bottom:1px solid #f1f5f9;">';
+      h += '<td style="padding:8px 10px; color:#1e293b; font-weight:600;">'+d.asignatura+'</td>';
+      h += '<td style="padding:8px 10px; color:#475569;">'+d.docente+'</td>';
+      h += '<td style="padding:8px 10px; font-weight:800; color:'+cG+';">'+pg+'</td>';
+      h += '<td style="padding:8px 10px; font-weight:600; color:#0ea5e9;">'+pl+'</td>';
+      h += '<td style="padding:8px 10px; font-weight:600; color:#d97706;">'+pa+'</td>';
+      h += '</tr>';
+    }
+  }
+  h += '</table></div>';
+  container.innerHTML = h;
+}
+
+// ---------------------------------------------------------------
+// LEYENDAS Y POR MEJORAR (LMS)
+// ---------------------------------------------------------------
+function renderLeyendaDimensiones(dataFiltrada, modalidadActiva) {
+  var colVirtual = document.getElementById('bi-leyenda-virtual');
+  var colPresencial = document.getElementById('bi-leyenda-presencial');
+  if(!colVirtual || !colPresencial) return;
+  colVirtual.innerHTML = ''; colPresencial.innerHTML = '';
+  
+  function buildDimHTML(dim, dataSlice, mainColor) {
+    if(!dim) return '';
+    var dimAvg = calcularPromedioDimension(dataSlice, dim.indices, 'criteriosLMS');
+    var vigesimal = (dimAvg * 5).toFixed(1);
+    var pct = (dimAvg / 4) * 100;
+    
+    var html = '<div style="margin-bottom:16px; background:#f8fafc; padding:12px; border-radius:8px; border:1px solid #e2e8f0; box-shadow:inset 0 1px 2px rgba(0,0,0,0.02)">';
+    html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">';
+    html += '<span style="font-weight:700; font-size:13px; color:#334155;">'+dim.nombre+'</span>';
+    html += '<span style="font-weight:800; font-size:13px; color:'+mainColor+';">'+vigesimal+' / 20</span>';
+    html += '</div>';
+    html += '<div style="width:100%; height:6px; background:#e2e8f0; border-radius:3px; overflow:hidden; margin-bottom:12px;">';
+    html += '<div style="height:100%; width:'+pct+'%; background:'+mainColor+'; transition:width 0.5s;"></div></div>';
+    
+    for(var j=0; j<dim.indices.length; j++) {
+      var idx = dim.indices[j];
+      var critTitle = biTitlesLMS[idx] || biHeadersLMS[idx] || 'Criterio '+(idx+1);
+      var cAvg = calcularPromedioDimension(dataSlice, [idx], 'criteriosLMS');
+      var cPct = (cAvg / 4) * 100;
+      var cColor = cAvg >= 3 ? '#10b981' : (cAvg >= 2 ? '#f59e0b' : '#ef4444');
+      
+      html += '<div style="margin-bottom:8px;">';
+      html += '<div style="display:flex; justify-content:space-between; font-size:11px; color:#64748b; margin-bottom:4px;">';
+      html += '<span title="'+critTitle+'" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:85%;">'+critTitle+'</span>';
+      html += '<span style="font-weight:700;">'+cAvg.toFixed(2)+'</span>';
+      html += '</div>';
+      html += '<div style="width:100%; height:4px; background:#e2e8f0; border-radius:2px; overflow:hidden;">';
+      html += '<div style="height:100%; width:'+cPct+'%; background:'+cColor+'; transition:width 0.5s;"></div></div>';
+      html += '</div>';
+    }
+    html += '</div>';
+    return html;
+  }
+  
+  if (modalidadActiva === 'VIRTUAL_HIBRIDO' || modalidadActiva === 'TODAS') {
+    var dataV = modalidadActiva === 'TODAS' ? dataFiltrada.filter(function(d){return d.modalidad !== 'PRESENCIAL';}) : dataFiltrada;
+    var keysV = Object.keys(DIMENSIONES_VIRTUAL);
+    for(var i=0; i<keysV.length; i++) colVirtual.innerHTML += buildDimHTML(DIMENSIONES_VIRTUAL[keysV[i]], dataV, '#3b82f6');
+  } else colVirtual.innerHTML = '<p style="color:#94a3b8; font-style:italic; font-size:12px;">No aplica (Filtro Presencial activo)</p>';
+  
+  if (modalidadActiva === 'PRESENCIAL' || modalidadActiva === 'TODAS') {
+    var dataP = modalidadActiva === 'TODAS' ? dataFiltrada.filter(function(d){return d.modalidad === 'PRESENCIAL';}) : dataFiltrada;
+    var keysP = Object.keys(DIMENSIONES_PRESENCIAL);
+    for(var i=0; i<keysP.length; i++) colPresencial.innerHTML += buildDimHTML(DIMENSIONES_PRESENCIAL[keysP[i]], dataP, '#7c3aed');
+  } else colPresencial.innerHTML = '<p style="color:#94a3b8; font-style:italic; font-size:12px;">No aplica (Filtro Virtual activo)</p>';
+}
+
+function renderDimensionesPorMejorarLms(dataFiltrada, modalidad) {
+  var container = document.getElementById('bi-mejorar-lms');
+  if(!container) return;
+  container.innerHTML = '';
+  var dimensionesBajas = [];
+  
+  function revisar(dimsMap, dataSlice, typeName) {
+    var keys = Object.keys(dimsMap);
+    for(var i=0; i<keys.length; i++) {
+       var dim = dimsMap[keys[i]];
+       var asigsAfectadas = 0;
+       var critsBajos = {};
+       for(var d=0; d<dataSlice.length; d++) {
+         var arr = dataSlice[d].criteriosLMS;
+         if(!arr) continue;
+         var tiene = false;
+         for(var j=0; j<dim.indices.length; j++) {
+           var idx = dim.indices[j];
+           if(arr[idx] === 1 || arr[idx] === 2) { tiene=true; critsBajos[biTitlesLMS[idx]||biHeadersLMS[idx]||'Criterio '+(idx+1)] = true; }
+         }
+         if(tiene) asigsAfectadas++;
+       }
+       if(asigsAfectadas > 0) dimensionesBajas.push({ nombre: dim.nombre, tipo: typeName, afectadas: asigsAfectadas, criterios: Object.keys(critsBajos) });
+    }
+  }
+  
+  if (modalidad === 'VIRTUAL_HIBRIDO' || modalidad === 'TODAS') {
+    var dataV = modalidad === 'TODAS' ? dataFiltrada.filter(function(d){return d.modalidad !== 'PRESENCIAL';}) : dataFiltrada;
+    revisar(DIMENSIONES_VIRTUAL, dataV, 'Virtual / Híbrida');
+  }
+  if (modalidad === 'PRESENCIAL' || modalidad === 'TODAS') {
+    var dataP = modalidad === 'TODAS' ? dataFiltrada.filter(function(d){return d.modalidad === 'PRESENCIAL';}) : dataFiltrada;
+    revisar(DIMENSIONES_PRESENCIAL, dataP, 'Presencial');
+  }
+  
+  if(dimensionesBajas.length === 0) {
+    container.innerHTML = '<div style="padding:20px; text-align:center; color:#10b981; font-weight:700; background:#ecfdf5; border:1px dashed #a7f3d0; border-radius:12px;"><i class="fa-solid fa-check-circle" style="font-size:24px; display:block; margin-bottom:8px;"></i>Todas las dimensiones LMS están en nivel óptimo.</div>';
+    return;
+  }
+  
+  dimensionesBajas.sort(function(a,b){return b.afectadas - a.afectadas;});
+  var html = '<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:16px;">';
+  for(var i=0; i<dimensionesBajas.length; i++) {
+    var d = dimensionesBajas[i];
+    html += '<div style="background:#fff; border:1px solid #fecaca; border-left:5px solid #ef4444; border-radius:12px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.05);">';
+    html += '<div style="padding:12px 16px; background:#fef2f2; border-bottom:1px solid #fee2e2; display:flex; justify-content:space-between; align-items:flex-start;">';
+    html += '<div><h6 style="margin:0 0 4px; font-size:13px; font-weight:800; color:#1e293b;">'+d.nombre+' ('+d.tipo+')</h6>';
+    html += '<span style="background:#fee2e2; color:#b91c1c; font-size:11px; font-weight:700; padding:2px 8px; border-radius:12px;">'+d.afectadas+' afectadas</span></div>';
+    html += '<i class="fa-solid fa-triangle-exclamation" style="color:#ef4444; font-size:16px;"></i></div>';
+    html += '<div style="padding:12px 16px;"><p style="margin:0 0 6px; font-size:11px; font-weight:700; color:#475569;">Criterios Bajos:</p><ul style="margin:0; padding-left:16px; font-size:11px; color:#64748b;">';
+    for(var j=0; j<d.criterios.length; j++) html += '<li>'+d.criterios[j]+'</li>';
+    html += '</ul></div></div>';
+  }
+  container.innerHTML = html + '</div>';
+}
+
+// ---------------------------------------------------------------
+// LEYENDAS Y POR MEJORAR (ACOMPAÑAMIENTO)
+// ---------------------------------------------------------------
+function renderLeyendaAcomp(dataFiltrada) {
+  var col = document.getElementById('bi-leyenda-acomp');
+  if(!col) return;
+  col.innerHTML = '';
+  
+  var keys = Object.keys(DIMENSIONES_ACOMP);
+  for(var i=0; i<keys.length; i++) {
+    var dim = DIMENSIONES_ACOMP[keys[i]];
+    var dimAvg = calcularPromedioDimension(dataFiltrada, dim.indices, 'criteriosAcomp');
+    var vigesimal = (dimAvg * 5).toFixed(1);
+    var pct = (dimAvg / 4) * 100;
+    
+    var html = '<div style="margin-bottom:16px; background:#f8fafc; padding:12px; border-radius:8px; border:1px solid #e2e8f0; box-shadow:inset 0 1px 2px rgba(0,0,0,0.02)">';
+    html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">';
+    html += '<span style="font-weight:700; font-size:13px; color:#334155;">'+dim.nombre+'</span>';
+    html += '<span style="font-weight:800; font-size:13px; color:#d97706;">'+vigesimal+' / 20</span>';
+    html += '</div>';
+    html += '<div style="width:100%; height:6px; background:#e2e8f0; border-radius:3px; overflow:hidden; margin-bottom:12px;">';
+    html += '<div style="height:100%; width:'+pct+'%; background:#f59e0b; transition:width 0.5s;"></div></div>';
+    
+    for(var j=0; j<dim.indices.length; j++) {
+      var idx = dim.indices[j];
+      var critTitle = biTitlesAcomp[idx] || biHeadersAcomp[idx] || 'Criterio '+(idx+1);
+      var cAvg = calcularPromedioDimension(dataFiltrada, [idx], 'criteriosAcomp');
+      var cPct = (cAvg / 4) * 100;
+      var cColor = cAvg >= 3 ? '#10b981' : (cAvg >= 2 ? '#f59e0b' : '#ef4444');
+      
+      html += '<div style="margin-bottom:8px;">';
+      html += '<div style="display:flex; justify-content:space-between; font-size:11px; color:#64748b; margin-bottom:4px;">';
+      html += '<span title="'+critTitle+'" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:85%;">'+critTitle+'</span>';
+      html += '<span style="font-weight:700;">'+cAvg.toFixed(2)+'</span>';
+      html += '</div>';
+      html += '<div style="width:100%; height:4px; background:#e2e8f0; border-radius:2px; overflow:hidden;">';
+      html += '<div style="height:100%; width:'+cPct+'%; background:'+cColor+'; transition:width 0.5s;"></div></div>';
+      html += '</div>';
+    }
+    html += '</div>';
+    col.innerHTML += html;
+  }
+}
+
+function renderDimensionesPorMejorarAcomp(dataFiltrada) {
+  var container = document.getElementById('bi-mejorar-acomp');
+  if(!container) return;
+  container.innerHTML = '';
+  var dimensionesBajas = [];
+  
+  var keys = Object.keys(DIMENSIONES_ACOMP);
+  for(var i=0; i<keys.length; i++) {
+     var dim = DIMENSIONES_ACOMP[keys[i]];
+     var asigsAfectadas = 0;
+     var critsBajos = {};
+     for(var d=0; d<dataFiltrada.length; d++) {
+       var arr = dataFiltrada[d].criteriosAcomp;
+       if(!arr) continue;
+       var tiene = false;
+       for(var j=0; j<dim.indices.length; j++) {
+         var idx = dim.indices[j];
+         if(arr[idx] === 1 || arr[idx] === 2) { tiene=true; critsBajos[biTitlesAcomp[idx]||biHeadersAcomp[idx]||'Criterio '+(idx+1)] = true; }
+       }
+       if(tiene) asigsAfectadas++;
+     }
+     if(asigsAfectadas > 0) dimensionesBajas.push({ nombre: dim.nombre, afectadas: asigsAfectadas, criterios: Object.keys(critsBajos) });
+  }
+  
+  if(dimensionesBajas.length === 0) {
+    container.innerHTML = '<div style="padding:20px; text-align:center; color:#10b981; font-weight:700; background:#ecfdf5; border:1px dashed #a7f3d0; border-radius:12px;"><i class="fa-solid fa-check-circle" style="font-size:24px; display:block; margin-bottom:8px;"></i>Todas las dimensiones pedagógicas están en nivel óptimo.</div>';
+    return;
+  }
+  
+  dimensionesBajas.sort(function(a,b){return b.afectadas - a.afectadas;});
+  var html = '<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:16px;">';
+  for(var i=0; i<dimensionesBajas.length; i++) {
+    var d = dimensionesBajas[i];
+    html += '<div style="background:#fff; border:1px solid #fecaca; border-left:5px solid #ef4444; border-radius:12px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.05);">';
+    html += '<div style="padding:12px 16px; background:#fef2f2; border-bottom:1px solid #fee2e2; display:flex; justify-content:space-between; align-items:flex-start;">';
+    html += '<div><h6 style="margin:0 0 4px; font-size:13px; font-weight:800; color:#1e293b;">'+d.nombre+'</h6>';
+    html += '<span style="background:#fee2e2; color:#b91c1c; font-size:11px; font-weight:700; padding:2px 8px; border-radius:12px;">'+d.afectadas+' afectadas</span></div>';
+    html += '<i class="fa-solid fa-triangle-exclamation" style="color:#ef4444; font-size:16px;"></i></div>';
+    html += '<div style="padding:12px 16px;"><p style="margin:0 0 6px; font-size:11px; font-weight:700; color:#475569;">Criterios Bajos:</p><ul style="margin:0; padding-left:16px; font-size:11px; color:#64748b;">';
+    for(var j=0; j<d.criterios.length; j++) html += '<li>'+d.criterios[j]+'</li>';
+    html += '</ul></div></div>';
+  }
+  container.innerHTML = html + '</div>';
+}
+
+// ---------------------------------------------------------------
+// LISTA DE ASIGNATURAS CRÍTICAS
+// ---------------------------------------------------------------
+function renderListaCritica(containerId, dataFiltrada, tipo) {
+  var container = document.getElementById(containerId);
+  if(!container) return;
+  
+  var prop = tipo === 'LMS' ? 'ptsLMS' : 'ptsAcomp';
+  var crits = dataFiltrada.filter(function(d){ return d[prop] > 0 && d[prop] <= 13; }); 
+  crits.sort(function(a,b){ return a[prop] - b[prop]; });
+  
+  var h = '<h6 style="margin:0 0 16px; font-size:14px; font-weight:700; color:#334155;"><i class="fa-solid fa-clipboard-list" style="color:#64748b; margin-right:6px;"></i>Asignaturas con Rendimiento Crítico ('+tipo+')</h6>';
+  if(crits.length === 0) {
+    container.innerHTML = h + '<p style="font-size:13px; color:#10b981; font-weight:600;"><i class="fa-solid fa-check"></i> No hay asignaturas en nivel Regular o Deficiente.</p>';
+    return;
+  }
+  
+  h += '<div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse; font-size:12px; text-align:left;">';
+  h += '<tr style="background:#f1f5f9; color:#475569; font-size:11px; font-weight:700; text-transform:uppercase; border-bottom:1px solid #e2e8f0;">';
+  h += '<th style="padding:8px 10px;">Asignatura</th><th style="padding:8px 10px;">Docente</th><th style="padding:8px 10px;">Programa</th><th style="padding:8px 10px;">Nota '+tipo+'</th></tr>';
+  
+  var max = Math.min(10, crits.length);
+  for(var i=0; i<max; i++) {
+    var c = crits[i];
+    h += '<tr style="border-bottom:1px solid #f1f5f9;">';
+    h += '<td style="padding:8px 10px; color:#1e293b; font-weight:600;">'+c.asignatura+'</td>';
+    h += '<td style="padding:8px 10px; color:#475569;">'+c.docente+'</td>';
+    h += '<td style="padding:8px 10px; color:#64748b; font-size:11px;">'+c.programa+'</td>';
+    var color = c[prop] <= 10 ? '#ef4444' : '#f59e0b';
+    h += '<td style="padding:8px 10px; font-weight:800; color:'+color+';">'+parseFloat(c[prop]).toFixed(2)+'</td>';
+    h += '</tr>';
+  }
+  h += '</table></div>';
+  if(crits.length > 10) h += '<p style="margin:10px 0 0; font-size:11px; color:#94a3b8; font-style:italic;">Y otras '+(crits.length-10)+' asignaturas en nivel crítico...</p>';
+  container.innerHTML = h;
+}
+
+// END OF FILE
 </script>

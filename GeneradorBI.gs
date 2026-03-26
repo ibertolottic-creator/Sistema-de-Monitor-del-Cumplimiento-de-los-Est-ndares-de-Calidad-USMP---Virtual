@@ -42,9 +42,9 @@ function generarCabecerasSabanaGeneral() {
     var codesPresencial = hojaPresencial.getRange(1, 21, 1, 34).getValues()[0];
     var titlesPresencial = hojaPresencial.getRange(2, 21, 1, 34).getValues()[0];
 
-    // 3. Acompañamiento (Criterios Col 22 a 32) - 11 columnas (Fila 1 y 2)
-    var codesAcomp = hojaAcomp.getRange(1, 22, 1, 11).getValues()[0];
-    var titlesAcomp = hojaAcomp.getRange(2, 22, 1, 11).getValues()[0];
+    // 3. Acompañamiento (Criterios Col 21 a 31) - 11 columnas (Fila 1 y 2)
+    var codesAcomp = hojaAcomp.getRange(1, 21, 1, 11).getValues()[0];
+    var titlesAcomp = hojaAcomp.getRange(2, 21, 1, 11).getValues()[0];
 
     // Ensamblar Fila 1 (Códigos) y Fila 2 (Títulos u omitido si es base)
     var fila1 = [];
@@ -151,9 +151,9 @@ function sincronizarSabanaBI() {
     var mapVirtual = construirMapaResultadosParaBI(hojaVirtual, 3, 55, 21, 34);
     var mapPresencial = construirMapaResultadosParaBI(hojaPresencial, 3, 55, 21, 34);
     
-    // En Hoja Acompañamiento Criterios inician en Columna 22 (V) y son 11
+    // En Hoja Acompañamiento Criterios inician en Columna 21 (U) y son 11
     // Score Acomp está en Columna 32 (AF)
-    var mapAcomp = construirMapaResultadosParaBI(hojaAcomp, 3, 32, 22, 11);
+    var mapAcomp = construirMapaResultadosParaBI(hojaAcomp, 3, 32, 21, 11);
 
     var sabanaDatos = [];
 

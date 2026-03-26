@@ -33,6 +33,7 @@ function getSabanaBIData() {
     // Fila 1 = Códigos, Fila 2 = Títulos, Datos desde Fila 3
     var allData = sheet.getRange(1, 1, lastRow, lastCol).getValues();
     var headerCodes = allData[0]; // Fila 1: códigos de columna
+    var headerTitles = allData[1]; // Fila 2: Títulos legibles
 
     // Mapeo dinámico de índices por código de columna (Fila 1)
     function findCol(code) {
@@ -64,8 +65,10 @@ function getSabanaBIData() {
     var lmsCount = iLmsEnd - iLmsStart;
 
     var lmsHeaderCodes = [];
+    var lmsHeaderTitles = [];
     for (var c = iLmsStart; c < iLmsEnd; c++) {
       lmsHeaderCodes.push(String(headerCodes[c] || '').trim());
+      lmsHeaderTitles.push(String(headerTitles[c] || '').trim());
     }
 
     // ---------------------------------------------------------------
@@ -76,9 +79,11 @@ function getSabanaBIData() {
     var acompCount = iAcompStart > 0 && iAcompEnd > iAcompStart ? iAcompEnd - iAcompStart : 0;
 
     var acompHeaderCodes = [];
+    var acompHeaderTitles = [];
     if (iAcompStart > 0) {
       for (var c = iAcompStart; c < iAcompEnd; c++) {
         acompHeaderCodes.push(String(headerCodes[c] || '').trim());
+        acompHeaderTitles.push(String(headerTitles[c] || '').trim());
       }
     }
 
@@ -119,19 +124,28 @@ function getSabanaBIData() {
       if (isNaN(scoreGral)) scoreGral = 0;
       if (isNaN(scoreVig)) scoreVig = 0;
 
+      // Función defensiva para rescatar notas (1-20) atrapadas en formato de Fecha de Google Sheets
+      function parseGrade(val) {
+        if (val instanceof Date) {
+          var epochMs = new Date(Date.UTC(1899, 11, 30)).getTime();
+          var diff = val.getTime() - epochMs;
+          var grade = Math.round(diff / 86400000);
+          return grade >= 0 && grade <= 20 ? grade : null;
+        }
+        return val !== null && val !== '' && !isNaN(val) ? Number(val) : null;
+      }
+
       // Extraer los 38 valores de criterios LMS
       var criteriosLMS = [];
       for (var c = iLmsStart; c < iLmsEnd; c++) {
-        var val = row[c];
-        criteriosLMS.push(val !== null && val !== '' && !isNaN(val) ? Number(val) : null);
+        criteriosLMS.push(parseGrade(row[c]));
       }
 
       // Extraer los 11 valores de criterios Acomp
       var criteriosAcomp = [];
       if (iAcompStart > 0) {
         for (var c = iAcompStart; c < iAcompEnd; c++) {
-          var val = row[c];
-          criteriosAcomp.push(val !== null && val !== '' && !isNaN(val) ? Number(val) : null);
+          criteriosAcomp.push(parseGrade(row[c]));
         }
       }
 
@@ -139,6 +153,7 @@ function getSabanaBIData() {
         rowIndex: i + 1,
         nombre: docente || asignatura,
         asignatura: asignatura,
+        docente: docente,
         programa: programa,
         modalidad: modalidad,
         coordinador: coordinador,
@@ -155,7 +170,9 @@ function getSabanaBIData() {
       success: true,
       biData: result,
       headerCodesLMS: lmsHeaderCodes,
-      headerCodesAcomp: acompHeaderCodes
+      headerTitlesLMS: lmsHeaderTitles,
+      headerCodesAcomp: acompHeaderCodes,
+      headerTitlesAcomp: acompHeaderTitles
     };
 
   } catch(e) {
