@@ -1,7 +1,7 @@
 # Estado del Proyecto: Sistema de Monitoreo USMP
 
 **Fecha de Última Actualización:** 27 de Marzo de 2026
-**Versión:** 2.2 (Radar Granular, Exportación PDF y Text-Wrap)
+**Versión:** 2.3 (Data Lake Coordinadores, Nav Tabs, Formato Horario)
 
 ---
 
@@ -17,9 +17,9 @@ Sistema de **Monitoreo del Cumplimiento de los Estándares de Calidad** construi
 
 ---
 
-## 2. Estructura de Archivos (23 archivos en Apps Script)
+## 2. Estructura de Archivos (26 archivos en Apps Script)
 
-### Backend (.gs) — 8 archivos
+### Backend (.gs) — 9 archivos
 
 | #   | Archivo                   | Responsabilidad                                                                                                                                                                                                                                                  |
 | --- | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -30,9 +30,10 @@ Sistema de **Monitoreo del Cumplimiento de los Estándares de Calidad** construi
 | 5   | `Backend_BI.gs`           | **(NUEVO v2.0)** Endpoint `getSabanaBIData()`. Lee Sábana (Fila 1=códigos, Fila 3+=datos). Determina modalidad con Col D + Col N. Retorna datos para KPIs y gráficos Chart.js.                                                                                   |
 | 6   | `Menu.gs`                 | Menú personalizado en Google Sheets para ejecutar sincronizaciones y generaciones desde la interfaz de la hoja.                                                                                                                                                  |
 | 7   | `ImportacionExterna.gs`   | Pipeline de importación. Conecta a hoja externa por ID, copia datos crudos a "Todo Matr".                                                                                                                                                                        |
-| 8   | `SincronizacionIntern.gs` | Distribuye data de "Asignación de coordinador" a hojas "LMS-virtual" y "LMS-presencial" según modalidad. Activa `MAINTENANCE_MODE` durante el proceso.                                                                                                           |
+| 8   | `Backend_Coordinadores.gs` | **(NUEVO v2.3)** Data Lake de Coordinadores. `getMetricasCoordinadores()`. Extrae aulas crudas de la Sábana, separa tiempos LMS (`audit_time_s`) vs Acomp (`a_audit_time`), y ráfagas (`audit_burst` vs `a_audit_burst`). |
+| 9   | `SincronizacionIntern.gs` | Distribuye data de "Asignación de coordinador" a hojas "LMS-virtual" y "LMS-presencial" según modalidad. Activa `MAINTENANCE_MODE` durante el proceso.                                                                                                           |
 
-### Frontend (.html) — 15 archivos
+### Frontend (.html) — 17 archivos
 
 | #   | Archivo                     | Responsabilidad                                                                                                                                                                                                       |
 | --- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -49,8 +50,10 @@ Sistema de **Monitoreo del Cumplimiento de los Estándares de Calidad** construi
 | 19  | `JS_Acompanamiento.html`    | Controlador autónomo de Acompañamiento. Motor Base 20 asimétrico (no penaliza vacíos). UI Lock System. Botones Felicitar/Reportar mutuamente exclusivos.                                                              |
 | 20  | `JS_Resultados.html`        | Controlador de Resultados. Init DataTables, procesamiento de consolidado, envío masivo de correos con PDFs adjuntos. Filtro por coordinador.                                                                          |
 | 21  | `JS_BI.html`                | **(NUEVO v2.0)** Controlador BI. `mostrarModuloBI()`, `cargarDataSabanaBI()`, `renderBiDashboard()`, `renderChartDistribucion()`, `renderPanelDinamicoExclusivo()`. Usa `style.display` para show/hide (bulletproof). |
-| 22  | `JS_Templates.html`         | Plantillas HTML de correo (Monitoreo + Acompañamiento). Firma adaptativa Pregrado/Posgrado.                                                                                                                           |
-| 23  | `JS_Tracking.html`          | Analítica. `logAccess()` para hits AP/USMP. `logInteraction()` para emails/WhatsApp. Cálculo de semana según días transcurridos.                                                                                      |
+| 22  | `JS_Coordinadores.html`     | **(NUEVO v2.3)** Controlador del módulo Coordinadores. Map-Reduce en cliente sobre Data Lake. Nav Tabs (`CURRENT_TAB`). Formato horario `formatMinutes()`. Gráficos Chart.js dinámicos.                               |
+| 23  | `View_Dashboard_Coordinadores.html` | **(NUEVO v2.3)** UI Full-Width del módulo Coordinadores. KPIs macro, grid de gráficas, tabla DataTables, modales informativos (`coordInfoModal`).                                                           |
+| 24  | `JS_Templates.html`         | Plantillas HTML de correo (Monitoreo + Acompañamiento). Firma adaptativa Pregrado/Posgrado.                                                                                                                           |
+| 25  | `JS_Tracking.html`          | Analítica. `logAccess()` para hits AP/USMP. `logInteraction()` para emails/WhatsApp. Cálculo de semana según días transcurridos.                                                                                      |
 
 ---
 
@@ -135,13 +138,23 @@ Sistema de **Monitoreo del Cumplimiento de los Estándares de Calidad** construi
 
 ---
 
+## 5.2 Cambios de la Sesión Actual (Refactorización Módulo Coordinadores)
+
+### Arquitectura Data Lake y UI Modular
+1. **Migración Backend (`Backend_Coordinadores.gs`):** Se eliminó el motor de pre-cálculo de reducciones (promedios) en el servidor. Ahora se despacha la data cruda completa por cada asignatura (Data Lake). Esto elimina los cuellos de botella de procesamiento de Google Apps Script y traslada el esfuerzo al cliente.
+2. **Pestañas Dinámicas (Nav Tabs):** Se construyó un sistema en `JS_Coordinadores.html` de filtrado visual ultra-rápido mediante `CURRENT_TAB`. Permite aislar la interfaz entre **"LMS"** y **"Acompañamiento"**, adaptando `DataTables` y `Chart.js` instantáneamente.
+3. **Precisión de Tiempos:** Se independizó la sumatoria de minutos de evaluación, leyendo directamente los cálculos semanales pre-procesados de la base de datos (`audit_time_s...` y `a_audit_time...`), y se formateó el texto a formato horario natural (ej. `2h 15m`).
+4. **Separación de Tráfico (Burst Audits):** Las auditorías relacionales (`a_audit_burst`) de modo presencial/síncrono ahora existen como variables independientes, garantizando la política de "Tolerancia Cero de Ruido" al saltar entre pestañas.
+
+---
+
 ## 6. Pasos para la Próxima Sesión
 
-1. **Verificar Filtro Presencial:** Confirmar que "Presencial (Evaluaciones)" muestra docentes presenciales no-híbridos.
-2. **Validar Gráfico de Barras:** Verificar criterios exclusivos (Tutorías S1-S4 / Evaluaciones S1-S4).
-3. **Tabla Detallada:** Considerar agregar tabla con listado individual de docentes debajo de gráficos.
-4. **Módulo Coordinadores:** Implementar "Análisis de Resultados de Coordinadores" (botón placeholder activo).
-5. **Testing General:** Probar que los demás módulos (Virtual, Presencial, Acompañamiento, Resultados, Asignación) siguen funcionando correctamente tras los cambios.
+1. ~~**Módulo Coordinadores:** Implementar "Análisis de Resultados de Coordinadores" (botón placeholder activo).~~ ✅ COMPLETADO v2.3
+2. **Validar Tiempos LMS en Producción:** Confirmar que `audit_time_s1..s4` producen sumas exactas en el formato `Xh Ym`.
+3. **Validar Ráfagas Acomp en Producción:** Confirmar que `a_audit_burst4`, `a_audit_burst9` se cuentan correctamente en pestaña Acompañamiento.
+4. **Testing General:** Probar que los demás módulos (Virtual, Presencial, Acompañamiento, Resultados, Asignación, BI Docentes) siguen funcionando correctamente.
+5. **Considerar:** Agregar exportación CSV/Excel del Data Lake de Coordinadores para análisis externo.
 
 ---
 
@@ -149,9 +162,11 @@ Sistema de **Monitoreo del Cumplimiento de los Estándares de Calidad** construi
 
 1. Abrir proyecto en `script.google.com`
 2. Verificar/actualizar: `Code.gs`, `Index.html`, `JS_Client.html`, `View_Home.html`
-3. Crear archivos nuevos: `Backend_BI` (.gs), `View_Dashboard_BI` (.html), `JS_BI` (.html)
-4. **Implementar** > **Nueva implementación** > Aplicación web
-5. Ejecutar como: "Yo" | Acceso: "Cualquier usuario de la organización"
-6. Probar: Home → clic en "Análisis de Resultados de Docentes" → verificar KPIs y gráficos
-7. Probar: Botón retorno ← → verificar que regresa al Home correctamente
-8. Probar: Filtros Virtual/Presencial → verificar datos correctos en cada filtro
+3. Crear/actualizar archivos del módulo BI: `Backend_BI` (.gs), `View_Dashboard_BI` (.html), `JS_BI` (.html)
+4. Crear/actualizar archivos del módulo Coordinadores: `Backend_Coordinadores` (.gs), `View_Dashboard_Coordinadores` (.html), `JS_Coordinadores` (.html)
+5. **Implementar** > **Nueva implementación** > Aplicación web
+6. Ejecutar como: "Yo" | Acceso: "Cualquier usuario de la organización"
+7. Probar: Home → clic en "Análisis de Resultados de Docentes" → verificar KPIs y gráficos
+8. Probar: Home → clic en "Análisis de Gestión de Coordinadores" → verificar pestañas LMS/Acomp
+9. Probar: Cambio de pestañas → verificar que columnas y gráficos se ocultan/muestran correctamente
+10. Probar: Filtros Programa/Coordinador → verificar que la tabla y KPIs se recalculan sin recarga

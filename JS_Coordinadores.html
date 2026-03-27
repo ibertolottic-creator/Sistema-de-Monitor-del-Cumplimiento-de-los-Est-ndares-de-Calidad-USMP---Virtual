@@ -1,0 +1,730 @@
+<!-- ==================== JS START: MÓDULO COORDINADORES ==================== -->
+<script>
+    // Variables Globales
+    var CURRENT_TAB = 'ALL';
+    var RAW_COORD_DATA = [];
+    var chartCoordLmsInst = null;
+    var chartCoordAcompInst = null;
+    var chartCoordTiemposInst = null;
+    var chartCoordTraficoInst = null;
+    var dtCoordAsignaturasInst = null;
+    
+    // Configuración Modal
+    const COORD_MODAL_DATA = {
+        'lms': {
+            title: 'Avance de Monitoreo: LMS',
+            icon: 'fa-laptop-code',
+            color: 'text-sky-500',
+            content: `
+                <p><strong>¿Qué mide?</strong> El porcentaje de aulas virtuales que ya fueron supervisadas y calificadas en la plataforma Moodle.</p>
+                <div class="bg-blue-50 border-l-4 border-blue-400 p-4 mt-2">
+                    <p class="text-blue-700"><strong>Fórmula:</strong> (Aulas con Calificación Vig. Final Mayor a Cero / Total de Aulas Asignadas) * 100%</p>
+                </div>
+                <ul class="list-disc pl-5 mt-3 space-y-1">
+                    <li>Un 100% indica que todas sus asignaturas virtuales están listas.</li>
+                    <li>Las Asignaturas en estado "Proceso" no suman puntos de Avance.</li>
+                </ul>
+            `
+        },
+        'acomp': {
+            title: 'Avance de Monitoreo: Acompañamiento',
+            icon: 'fa-chalkboard-user',
+            color: 'text-amber-500',
+            content: `
+                <p><strong>¿Qué mide?</strong> El porcentaje de visitas o acompañamientos pedagógicos sincrónicos finalizados.</p>
+                <div class="bg-amber-50 border-l-4 border-amber-400 p-4 mt-2">
+                    <p class="text-amber-700"><strong>Regla:</strong> Aulas con Rúbrica de Acompañamiento Generada y Evaluada completamente.</p>
+                </div>
+                <p class="mt-3">Para alcanzar la meta de Desempeño Efectivo, este indicador debe subir equitativamente junto al Monitoreo LMS.</p>
+            `
+        },
+        'tiempos': {
+            title: 'Tiempos Promedio de Evaluación',
+            icon: 'fa-stopwatch',
+            color: 'text-pink-500',
+            content: `
+                <p><strong>¿Qué mide?</strong> Registra cuántos minutos efectivos demoró un coordinador revisando una asignatura.</p>
+                <div class="bg-pink-50 border-l-4 border-pink-400 p-4 mt-2 text-sm">
+                    <p class="text-pink-700 mb-1"><strong>LMS:</strong> Se suman los minutos exactos precalculados en las bitácoras semanales (Ej. <em>audit_time_s1 + s2...</em>).</p>
+                    <p class="text-pink-700 mt-2"><strong>Acompañamiento:</strong> Se calcula restando la hora de calificacion del *último* criterio contra el *primer* criterio marcado.</p>
+                </div>
+                <ul class="list-disc pl-5 mt-3 space-y-1 text-xs">
+                    <li>Alerta de evaluaciones "express" (Ej. Menos de 1 Minuto) que indican automatismos sin rigor.</li>
+                    <li>Ayuda a balancear el nivel de tiempo que cada coordinador invierte en sus aulas.</li>
+                </ul>
+            `
+        },
+        'trafico': {
+            title: 'Tráfico Operativo: Accesos vs Comunicaciones',
+            icon: 'fa-network-wired',
+            color: 'text-green-500',
+            content: `
+                <p><strong>¿Qué mide?</strong> El esfuerzo de gestión manual que hace el equipo para empujar el avance.</p>
+                <ul class="list-disc pl-5 mt-3 space-y-2">
+                    <li><strong class="text-gray-800">Hits Aula (Azul):</strong> Número de clics profundos y navegaciones dentro del Aula Virtual Moodle del docente.</li>
+                    <li><strong class="text-gray-800">Emails (Naranja):</strong> Cantidad de Correos Institucionales Automáticos despachados vía el Robot de Reportes.</li>
+                    <li><strong class="text-gray-800">WhatsApp (Verde):</strong> Cantidad de Mensajes Vía API mandados al celular personal de los Docentes.</li>
+                </ul>
+                <div class="bg-gray-100 border-l-4 border-gray-400 p-3 mt-3 text-xs italic">
+                    "A mayor tráfico y baja tasa de correos, significa alta carga presencial/LMS sin necesidad de alarmas de advertencia."
+                </div>
+            `
+        }
+    };
+  
+    function initCoordinadores() {
+        document.getElementById('coord-content').style.display = 'none';
+        const loader = document.getElementById('coord-loader');
+        loader.style.display = 'flex';
+        
+        const btn = document.getElementById('btnRecargarCoord');
+        if(btn) {
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Trabajando...';
+            btn.disabled = true;
+        }
+  
+        google.script.run
+            .withSuccessHandler(onCoordinadoresSuccess)
+            .withFailureHandler(err => {
+                loader.style.display = 'none';
+                if(btn) {
+                    btn.innerHTML = '<i class="fa-solid fa-sync-alt"></i> Intentar de Nuevo';
+                    btn.disabled = false;
+                }
+                showToast("Error de Servidor", err.toString(), "error");
+            })
+            .getMetricasCoordinadores();
+    }
+  
+    function onCoordinadoresSuccess(response) {
+        if (!response.success) {
+            document.getElementById('coord-loader').style.display = 'none';
+            document.getElementById('btnRecargarCoord').disabled = false;
+            document.getElementById('btnRecargarCoord').innerHTML = '<i class="fa-solid fa-sync-alt"></i> Actualizar';
+            showToast("Advertencia BI", response.message, "warning");
+            return;
+        }
+  
+        RAW_COORD_DATA = response.data || [];
+        
+        // Populate Filtros
+        var setProgs = new Set();
+        var setCoords = new Set();
+        
+        RAW_COORD_DATA.forEach(r => {
+            if(r.prog) setProgs.add(r.prog);
+            if(r.coord) setCoords.add(r.coord);
+        });
+
+        // Populate Dropdowns
+        const cboProg = document.getElementById('filtroCoordPrograma');
+        cboProg.innerHTML = '<option value="TODOS" selected>Todos los Programas</option>';
+        [...setProgs].sort().forEach(p => cboProg.add(new Option(p, p)));
+
+        const cboCoord = document.getElementById('filtroCoordAlias');
+        cboCoord.innerHTML = '<option value="TODOS" selected>Todos los Coordinadores</option>';
+        [...setCoords].sort().forEach(c => cboCoord.add(new Option(c, c)));
+
+        // Fill Tab logic
+        document.getElementById('coord-tabs-container').style.display = 'block';
+
+        // Render Initial Dashboard
+        renderCoordinadoresDashboard();
+  
+        document.getElementById('coord-loader').style.display = 'none';
+        document.getElementById('coord-content').style.display = 'flex';
+        
+        const btn = document.getElementById('btnRecargarCoord');
+        if(btn) {
+            btn.innerHTML = '<i class="fa-solid fa-sync-alt"></i> Actualizar Front';
+            btn.disabled = false;
+        }
+        showToast("Métricas Analizadas", "Data Lake de Gestión descargado exitosamente.", "success");
+    }
+
+    /** Módulo de Cambio de Pestañas **/
+    function switchCoordTab(tab) {
+        CURRENT_TAB = tab;
+        
+        // Colores de Selección
+        const bgAll = tab === 'ALL' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500';
+        const bgLms = tab === 'LMS' ? 'border-blue-500 text-blue-600' : 'border-transparent text-slate-500';
+        const bgAcp = tab === 'ACOMP' ? 'border-amber-500 text-amber-600' : 'border-transparent text-slate-500';
+        
+        document.getElementById('tabCoordALL').className = `flex align-center pb-2 px-1 border-b-2 font-bold cursor-pointer transition-colors ${bgAll}`;
+        document.getElementById('tabCoordLMS').className = `flex align-center pb-2 px-1 border-b-2 font-bold cursor-pointer transition-colors ${bgLms}`;
+        document.getElementById('tabCoordACOMP').className = `flex align-center pb-2 px-1 border-b-2 font-bold cursor-pointer transition-colors ${bgAcp}`;
+        
+        // Repintar Todo
+        renderCoordinadoresDashboard();
+    }
+
+    /**
+     * Helper: Convertir minutos a HH:MM -> ej. 145 => "2h 25m"
+     */
+    function formatMinutes(minStr) {
+        let m = parseFloat(minStr);
+        if (isNaN(m) || m === 0) return "-";
+        m = Math.round(m);
+        if (m < 60) return `${m}m`;
+        let hr = Math.floor(m / 60);
+        let rem = m % 60;
+        return rem > 0 ? `${hr}h ${rem}m` : `${hr}h`;
+    }
+
+    /**
+     * Map-Reduce en Frontend
+     */
+    function renderCoordinadoresDashboard() {
+        if(!RAW_COORD_DATA || RAW_COORD_DATA.length === 0) return;
+
+        const valProg = document.getElementById('filtroCoordPrograma').value;
+        const valCoord = document.getElementById('filtroCoordAlias').value;
+
+        // 1. Filtrar Data Cruda
+        const filteredData = RAW_COORD_DATA.filter(r => {
+            let pass = true;
+            if (valProg !== 'TODOS' && r.prog !== valProg) pass = false;
+            if (valCoord !== 'TODOS' && r.coord !== valCoord) pass = false;
+            return pass;
+        });
+
+        document.getElementById('coordBadgeListado').innerText = `${filteredData.length} registros`;
+
+        // 2. Map-Reduce (Agrupar por Coordinador)
+        let coordMap = {};
+        
+        let globals = {
+            totalAsigs: filteredData.length,
+            lmsAprobados: 0,
+            lmsProceso: 0,
+            acompAprobados: 0,
+            acompProceso: 0,
+            evidencias: 0,
+            bursts: 0
+        };
+
+        filteredData.forEach(r => {
+            if(!coordMap[r.coord]) {
+                coordMap[r.coord] = {
+                    coord: r.coord,
+                    total: 0,
+                    lmsAprobados: 0, lmsProceso: 0, lmsTsTotal: 0, lmsTsCount: 0,
+                    acompAprobados: 0, acompProceso: 0, acpTsTotal: 0, acpTsCount: 0,
+                    hits: 0, mails: 0, wa: 0, audits: 0, auditsLms: 0, auditsAcp: 0
+                };
+            }
+            let c = coordMap[r.coord];
+            c.total++;
+
+            // LMS Logic
+            if(r.s_lms !== null && r.s_lms > 0) { 
+                c.lmsAprobados++; globals.lmsAprobados++;
+            } else if (r.startedLms) {
+                c.lmsProceso++; globals.lmsProceso++;
+            }
+            if(r.ts_lms > 0) {
+                c.lmsTsTotal += r.ts_lms; c.lmsTsCount++;
+            }
+
+            // Acomp Logic
+            if(r.s_acp !== null && r.s_acp > 0) { 
+                c.acompAprobados++; globals.acompAprobados++;
+            } else if (r.startedAcp) {
+                c.acompProceso++; globals.acompProceso++;
+            }
+            if(r.ts_acp > 0) {
+                c.acpTsTotal += r.ts_acp; c.acpTsCount++;
+            }
+
+            c.hits += r.h;
+            c.mails += r.m;
+            c.wa += r.w;
+            c.auditsLms += r.a_lms;
+            c.auditsAcp += r.a_acp;
+            c.audits = c.auditsLms + c.auditsAcp;
+
+            globals.evidencias += (r.h + r.m + r.w);
+            globals.bursts += c.audits;
+        });
+
+        // 3. Generar Arrays de Resumen
+        let coordinadores = Object.values(coordMap);
+        
+        // Calcular Avances para ordenar
+        coordinadores.forEach(c => {
+            c.pctLms = c.total > 0 ? (c.lmsAprobados / c.total) * 100 : 0;
+            c.pctAcomp = c.total > 0 ? (c.acompAprobados / c.total) * 100 : 0;
+            c.avgLms = c.lmsTsCount > 0 ? c.lmsTsTotal / c.lmsTsCount : 0;
+            c.avgAcomp = c.acpTsCount > 0 ? c.acpTsTotal / c.acpTsCount : 0;
+        });
+
+        // Ranking Sorting General (Usando Promedio de ambos LMS/ACOMP)
+        coordinadores.sort((a,b) => ((b.pctLms + b.pctAcomp)/2) - ((a.pctLms + a.pctAcomp)/2));
+
+        const gPctLms = globals.totalAsigs > 0 ? (globals.lmsAprobados / globals.totalAsigs) * 100 : 0;
+        const gPctAcp = globals.totalAsigs > 0 ? (globals.acompAprobados / globals.totalAsigs) * 100 : 0;
+        const gAvance = ((gPctLms + gPctAcp) / 2).toFixed(1);
+
+        // Renderizar 4 Cartas Superiores
+        renderCoordKPIs(coordinadores.length, globals);
+
+        // Ocultar o Mostrar Gráficos según CURRENT_TAB
+        const cardLms = document.getElementById('cardGraphLms');
+        const cardAcp = document.getElementById('cardGraphAcomp');
+        const cardTrf = document.getElementById('cardGraphTrafico');
+        
+        if(CURRENT_TAB === 'LMS') {
+            if(cardLms) cardLms.style.display = 'block';
+            if(cardAcp) cardAcp.style.display = 'none';
+            if(cardTrf) cardTrf.style.display = 'block';
+        } else if(CURRENT_TAB === 'ACOMP') {
+            if(cardLms) cardLms.style.display = 'none';
+            if(cardAcp) cardAcp.style.display = 'block';
+            if(cardTrf) cardTrf.style.display = 'none';
+        } else {
+            // ALL
+            if(cardLms) cardLms.style.display = 'block';
+            if(cardAcp) cardAcp.style.display = 'block';
+            if(cardTrf) cardTrf.style.display = 'block';
+        }
+
+        // Renderizar Gráficos
+        if (CURRENT_TAB === 'ALL' || CURRENT_TAB === 'LMS') {
+            renderChartLmsAcomp(coordinadores, 'chartCoordLms', 'pctLms', 'LMS', '#0ea5e9');
+            renderChartTrafico(coordinadores);
+        }
+        if (CURRENT_TAB === 'ALL' || CURRENT_TAB === 'ACOMP') {
+            renderChartLmsAcomp(coordinadores, 'chartCoordAcomp', 'pctAcomp', 'ACOMP', '#f59e0b');
+        }
+        renderChartTiempos(coordinadores);
+
+        // Renderizar Tablas
+        renderCoordResumen(coordinadores);
+        renderCoordDetalleAsignaturas(filteredData);
+    }
+  
+    /** RENDER 1: KPIs SUPERIORES */
+    function renderCoordKPIs(totalCoords, globals) {
+        let pct = 0;
+        let titlePct = "Avance Medio";
+        
+        if(CURRENT_TAB === 'ALL') {
+            const lmsP = globals.totalAsigs > 0 ? (globals.lmsAprobados / globals.totalAsigs) * 100 : 0;
+            const acpP = globals.totalAsigs > 0 ? (globals.acompAprobados / globals.totalAsigs) * 100 : 0;
+            pct = ((lmsP + acpP) / 2).toFixed(1);
+        } else if (CURRENT_TAB === 'LMS') {
+            titlePct = "Avance LMS";
+            pct = globals.totalAsigs > 0 ? ((globals.lmsAprobados / globals.totalAsigs) * 100).toFixed(1) : 0;
+        } else {
+            titlePct = "Avance Acomp";
+            pct = globals.totalAsigs > 0 ? ((globals.acompAprobados / globals.totalAsigs) * 100).toFixed(1) : 0;
+        }
+
+        // Trafico Info (Solo mostrar si no es Acomp)
+        const trfBlock = CURRENT_TAB !== 'ACOMP' ? `
+            <div style="background:#fff; border-radius:12px; border:1px solid #e2e8f0; padding:16px; display:flex; align-items:center; gap:16px; box-shadow:0 1px 3px rgba(0,0,0,0.04);">
+                <div style="width:48px; height:48px; border-radius:50%; background:#e0f2fe; color:#0284c7; font-size:20px; display:flex; justify-content:center; align-items:center;">
+                    <i class="fa-solid fa-eye"></i>
+                </div>
+                <div>
+                    <h5 style="margin:0; font-size:12px; font-weight:700; color:#64748b; text-transform:uppercase;">Traf. Operativo</h5>
+                    <p style="margin:2px 0 0; font-size:22px; font-weight:800; color:#0f172a;">${globals.evidencias}</p>
+                </div>
+            </div>
+            <div style="background:#fff; border-radius:12px; border:1px solid #e2e8f0; padding:16px; display:flex; align-items:center; gap:16px; box-shadow:0 1px 3px rgba(0,0,0,0.04);">
+                <div style="width:48px; height:48px; border-radius:50%; background:#fef3c7; color:#d97706; font-size:20px; display:flex; justify-content:center; align-items:center;">
+                    <i class="fa-solid fa-flag"></i>
+                </div>
+                <div>
+                    <h5 style="margin:0; font-size:12px; font-weight:700; color:#d97706; text-transform:uppercase;">Burst Audits</h5>
+                    <p style="margin:2px 0 0; font-size:22px; font-weight:800; color:#b45309;">${globals.bursts}</p>
+                </div>
+            </div>` : '';
+
+        document.getElementById('coord-kpis').innerHTML = `
+            <div style="background:#fff; border-radius:12px; border:1px solid #e2e8f0; padding:16px; display:flex; align-items:center; gap:16px; box-shadow:0 1px 3px rgba(0,0,0,0.04);">
+                <div style="width:48px; height:48px; border-radius:50%; background:#f3e8ff; color:#9333ea; font-size:20px; display:flex; justify-content:center; align-items:center;">
+                    <i class="fa-solid fa-people-group"></i>
+                </div>
+                <div>
+                    <h5 style="margin:0; font-size:12px; font-weight:700; color:#64748b; text-transform:uppercase;">Equipo Eval.</h5>
+                    <p style="margin:2px 0 0; font-size:22px; font-weight:800; color:#0f172a;">${totalCoords}</p>
+                </div>
+            </div>
+            <div style="background:#fff; border-radius:12px; border:1px solid #e2e8f0; padding:16px; display:flex; align-items:center; gap:16px; box-shadow:0 1px 3px rgba(0,0,0,0.04);">
+                <div style="width:48px; height:48px; border-radius:50%; background:#dcfce7; color:#16a34a; font-size:20px; display:flex; justify-content:center; align-items:center;">
+                    <i class="fa-solid fa-chart-line"></i>
+                </div>
+                <div>
+                    <h5 style="margin:0; font-size:12px; font-weight:700; color:#64748b; text-transform:uppercase;">${titlePct}</h5>
+                    <p style="margin:2px 0 0; font-size:22px; font-weight:800; color:#0f172a;">${pct}%</p>
+                </div>
+            </div>
+            ${trfBlock}
+        `;
+    }
+
+    /** RENDER 2: TABLA RESUMEN */
+    function renderCoordResumen(arr) {
+        // Logica Ocultar Cabeceras Tabla 1
+        let showLms = (CURRENT_TAB === 'ALL' || CURRENT_TAB === 'LMS');
+        let showAcp = (CURRENT_TAB === 'ALL' || CURRENT_TAB === 'ACOMP');
+        let showTrf = (CURRENT_TAB !== 'ACOMP');
+
+        const thO = (id, show) => { let el = document.getElementById(id); if(el) el.style.display = show ? '' : 'none'; };
+        thO('thR_lmsAv', showLms); thO('thR_acpAv', showAcp);
+        thO('thR_lmsTm', showLms); thO('thR_acpTm', showAcp);
+        thO('thR_hits', showTrf); thO('thR_mails', showTrf); thO('thR_wa', showTrf); thO('thR_audits', true);
+
+        const tbody = document.getElementById('coord-resumen-body');
+        tbody.innerHTML = '';
+        if(arr.length === 0) return;
+
+        arr.forEach((c, idx) => {
+            let tr = document.createElement('tr');
+            tr.style.borderBottom = "1px solid #f1f5f9";
+            
+            // Format Avances
+            let badgeLms = `<span style="padding:4px 8px; border-radius:12px; font-size:11px; font-weight:800; background:#e0f2fe; color:#0369a1;">${c.pctLms.toFixed(1)}%</span>`;
+            if(c.pctLms < 100) badgeLms = `<span style="padding:4px 8px; border-radius:12px; font-size:11px; font-weight:800; background:#fef3c7; color:#b45309;">${c.pctLms.toFixed(1)}%</span>`;
+            if(c.pctLms < 50) badgeLms = `<span style="padding:4px 8px; border-radius:12px; font-size:11px; font-weight:800; background:#fee2e2; color:#b91c1c;">${c.pctLms.toFixed(1)}%</span>`;
+
+            let badgeAcp = `<span style="padding:4px 8px; border-radius:12px; font-size:11px; font-weight:800; background:#dcfce7; color:#15803d;">${c.pctAcomp.toFixed(1)}%</span>`;
+            if(c.pctAcomp < 100) badgeAcp = `<span style="padding:4px 8px; border-radius:12px; font-size:11px; font-weight:800; background:#fef3c7; color:#b45309;">${c.pctAcomp.toFixed(1)}%</span>`;
+            if(c.pctAcomp < 50) badgeAcp = `<span style="padding:4px 8px; border-radius:12px; font-size:11px; font-weight:800; background:#fee2e2; color:#b91c1c;">${c.pctAcomp.toFixed(1)}%</span>`;
+
+            // Format Burst
+            let visibleAudits = c.audits;
+            if (CURRENT_TAB === 'LMS') visibleAudits = c.auditsLms;
+            if (CURRENT_TAB === 'ACOMP') visibleAudits = c.auditsAcp;
+
+            let auditBadge = `<span style="color:#94a3b8; font-size:11px;">0</span>`;
+            if(visibleAudits > 0) auditBadge = `<span style="padding:4px 10px; border-radius:6px; font-size:11px; font-weight:800; background:#ffedd5; color:#c2410c; border:1px solid #fdba74;"><i class="fa-solid fa-triangle-exclamation mr-1"></i>${visibleAudits}</span>`;
+
+            let tdLmsAv = showLms ? `<td style="padding:14px 16px; text-align:center;">${badgeLms}</td>` : '';
+            let tdAcpAv = showAcp ? `<td style="padding:14px 16px; text-align:center;">${badgeAcp}</td>` : '';
+            let tdLmsT = showLms ? `<td style="padding:14px 16px; text-align:center; font-size:13px; font-weight:600; color:#475569;">${formatMinutes(c.avgLms)}</td>` : '';
+            let tdAcpT = showAcp ? `<td style="padding:14px 16px; text-align:center; font-size:13px; font-weight:600; color:#475569;">${formatMinutes(c.avgAcomp)}</td>` : '';
+            
+            // "Tráfico" is specific to LMS mostly (Hits, Mails, WA). But Audits apply to both.
+            // If we are in ACOMP, we don't show Tráfico (because showTrf = false).
+            // Wait, the user explicitly asked to see Audits in Acomp!
+            // I should override showTrf to show Audits even in Acomp IF they have Acomp bursts.
+            // Actually, in the UI there is an 'Audits' column inside the 'Trafico' group.
+            // Let's modify the showTrf logic natively so Audits appear separately!
+            // If Tráfico is hidden, we STILL want the audit column to show for Acomp! 
+            let tdTrafico = ``;
+            if (showTrf) {
+                tdTrafico += `<td style="padding:14px 16px; text-align:center; font-size:13px; color:#475569;">${c.hits}</td>
+                              <td style="padding:14px 16px; text-align:center;"><span style="color:#d97706; font-size:13px; font-weight:700; background:#fef3c7; padding:2px 8px; border-radius:10px;"><i class="fa-solid fa-envelope mr-1 text-[10px]"></i> ${c.mails}</span></td>
+                              <td style="padding:14px 16px; text-align:center;"><span style="color:#15803d; font-size:13px; font-weight:700; background:#dcfce7; padding:2px 8px; border-radius:10px;"><i class="fa-brands fa-whatsapp mr-1 text-[10px]"></i> ${c.wa}</span></td>`;
+            }
+            // Audit always visible, it just adapts its value
+            tdTrafico += `<td style="padding:14px 16px; text-align:center;">${auditBadge}</td>`;
+
+            tr.innerHTML = `
+                <td style="padding:14px 16px; font-size:13px; color:#64748b;">${idx+1}</td>
+                <td style="padding:14px 16px;">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <div style="width:8px; height:8px; border-radius:50%; background:#8b5cf6;"></div>
+                        <span style="font-size:14px; font-weight:700; color:#1e293b;">${c.coord}</span>
+                        <span style="font-size:10px; color:#94a3b8; background:#f1f5f9; padding:2px 6px; border-radius:10px;">${c.total} Aulas</span>
+                    </div>
+                </td>
+                ${tdLmsAv}
+                ${tdAcpAv}
+                ${tdLmsT}
+                ${tdAcpT}
+                ${tdTrafico}
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    /** 
+     * RENDER 3: TABLA INDIVIDUAL DATATABLES DETALLADA 
+     */
+    function renderCoordDetalleAsignaturas(dataArr) {
+        if(dtCoordAsignaturasInst) {
+            dtCoordAsignaturasInst.destroy();
+            dtCoordAsignaturasInst = null;
+        }
+
+        const tbody = document.getElementById('coord-asignaturas-body');
+        tbody.innerHTML = '';
+        
+        dataArr.forEach(r => {
+            let tr = document.createElement('tr');
+            tr.className = 'border-b hover:bg-slate-50 transition-colors';
+            
+            let btnLms = r.s_lms !== null ? `<span class="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded font-bold whitespace-nowrap">${formatMinutes(r.ts_lms)}</span>` : `-`;
+            let btnAcp = r.s_acp !== null ? `<span class="bg-amber-100 text-amber-800 text-xs px-2 py-1 rounded font-bold whitespace-nowrap">${formatMinutes(r.ts_acp)}</span>` : `-`;
+            
+            let vAud = CURRENT_TAB === 'ACOMP' ? r.a_acp : r.a_lms;
+            if (CURRENT_TAB === 'ALL') vAud = r.a;
+            
+            let audBag = vAud > 0 ? `<span class="bg-red-100 border border-red-300 text-red-700 text-xs px-2 py-1 rounded font-bold shadow-sm" title="Ráfagas Alertadas"><i class="fa-solid fa-triangle-exclamation mr-1"></i>${vAud}</span>` : `<span class="text-xs text-gray-300 font-bold">0</span>`;
+
+            tr.innerHTML = `
+                <td class="px-4 py-3 font-medium text-xs truncate max-w-[150px]" title="${r.prog}">${r.prog}</td>
+                <td class="px-4 py-3 text-xs text-gray-800 truncate max-w-[200px]" title="${r.cur}">${r.cur}</td>
+                <td class="px-4 py-3 text-xs text-gray-600 truncate max-w-[150px]" title="${r.doc}">${r.doc}</td>
+                <td class="px-4 py-3 text-xs font-bold text-gray-800 flex items-center gap-2"><div class="w-1.5 h-1.5 rounded-full bg-indigo-500"></div>${r.coord}</td>
+                <td class="px-3 py-3 text-center border-l bg-blue-50/20">${btnLms}</td>
+                <td class="px-3 py-3 text-center border-l bg-amber-50/20">${btnAcp}</td>
+                <td class="px-3 py-3 text-center text-xs text-gray-600 font-bold border-l">${r.h}</td>
+                <td class="px-3 py-3 text-center text-xs text-orange-600 font-bold border-l">${r.m}</td>
+                <td class="px-3 py-3 text-center text-xs text-emerald-600 font-bold border-l">${r.w}</td>
+                <td class="px-3 py-3 text-center border-l">${audBag}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        // Init DataTables
+        dtCoordAsignaturasInst = new DataTable('#dtCoordAsignaturas', {
+            language: { url: 'https://cdn.datatables.net/plug-ins/1.13.7/i18n/es-ES.json' },
+            pageLength: 10,
+            ordering: true,
+            info: true,
+            searching: true,
+            responsive: false,
+            // Modificamos el layout para ser compacto
+            dom: '<"flex justify-between items-center mb-4"lf>rt<"flex justify-between items-center mt-4"ip>',
+            order: [[0, "asc"]] // Order by program
+        });
+
+        // Visibilidad DataTables
+        dtCoordAsignaturasInst.column(4).visible(CURRENT_TAB === 'ALL' || CURRENT_TAB === 'LMS');  // lms
+        dtCoordAsignaturasInst.column(5).visible(CURRENT_TAB === 'ALL' || CURRENT_TAB === 'ACOMP');// acp
+        
+        let showTrafico = (CURRENT_TAB !== 'ACOMP');
+        dtCoordAsignaturasInst.column(6).visible(showTrafico); // hits
+        dtCoordAsignaturasInst.column(7).visible(showTrafico); // mails
+        dtCoordAsignaturasInst.column(8).visible(showTrafico); // wa
+        dtCoordAsignaturasInst.column(9).visible(true);        // audits se queda siempre visible porque Acomp tiene los suyos
+    }
+
+    /** 
+     * RENDER GRÁFICOS
+     */
+    function renderChartLmsAcomp(arr, canvasId, metricProperty, metricName, barColor) {
+        if (!arr || arr.length === 0) return;
+        
+        let labels = arr.map(c => c.coord);
+        let dataPct = arr.map(c => c[metricProperty]);
+        
+        const ctx = document.getElementById(canvasId);
+        if(!ctx) return;
+        
+        // Destruir previas
+        if(canvasId === 'chartCoordLms' && chartCoordLmsInst) chartCoordLmsInst.destroy();
+        if(canvasId === 'chartCoordAcomp' && chartCoordAcompInst) chartCoordAcompInst.destroy();
+        
+        const chart = new Chart(ctx, {
+            type: 'bar', // Horizontal bar is an option inside 'bar' via indexAxis
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: `% Avance de Evaluaciones ${metricName}`,
+                    data: dataPct,
+                    backgroundColor: barColor,
+                    borderRadius: 4,
+                    barPercentage: 0.6
+                }]
+            },
+            options: {
+                indexAxis: 'y', // Barra horizontal!
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                         callbacks: { label: function(ctx) { return ctx.raw.toFixed(1) + '% Avance ' + metricName; } }
+                    }
+                },
+                scales: {
+                    x: { min: 0, max: 100, grid: { borderDash: [2, 4], color: '#e2e8f0' } },
+                    y: { grid: { display: false } }
+                }
+            }
+        });
+
+        if(canvasId === 'chartCoordLms') chartCoordLmsInst = chart;
+        else chartCoordAcompInst = chart;
+    }
+
+    function renderChartTiempos(arr) {
+        if (!arr || arr.length === 0) return;
+        
+        let labels = arr.map(c => c.coord);
+        let dataLms = arr.map(c => c.avgLms.toFixed(1));
+        let dataAcp = arr.map(c => c.avgAcomp.toFixed(1));
+
+        const ctx = document.getElementById('chartCoordTiempos');
+        if(!ctx) return;
+        if(chartCoordTiemposInst) {
+            chartCoordTiemposInst.destroy();
+            chartCoordTiemposInst = null;
+        }
+
+        let datasetsArr = [];
+        if (CURRENT_TAB === 'ALL' || CURRENT_TAB === 'LMS') {
+            datasetsArr.push({
+                label: 'LMS (Min)',
+                data: dataLms,
+                backgroundColor: '#60a5fa', // Blue
+                borderRadius: 4
+            });
+        }
+        if (CURRENT_TAB === 'ALL' || CURRENT_TAB === 'ACOMP') {
+            datasetsArr.push({
+                label: 'Acompañamiento (Min)',
+                data: dataAcp,
+                backgroundColor: '#fbbf24', // Yellow
+                borderRadius: 4
+            });
+        }
+
+        chartCoordTiemposInst = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: datasetsArr
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } },
+                    tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${ctx.raw}' min` } }
+                },
+                scales: {
+                    y: { beginAtZero: true, grace: '10%' },
+                    x: { grid: { display: false } }
+                }
+            }
+        });
+    }
+
+    function renderChartTrafico(arr) {
+        if (!arr || arr.length === 0) return;
+
+        let labels = arr.map(c => c.coord);
+        let dataHits = arr.map(c => c.hits);
+        let dataComms = arr.map(c => c.mails + c.wa); 
+        // "Comms" as requested (Mails + WA added in the graph, but physically separated in table) Wait, user said ONLY separate!
+        // The user said: "m por separado por favor" to visual table so I will graph them separated.
+        let dataMails = arr.map(c => c.mails);
+        let dataWa = arr.map(c => c.wa);
+
+        const ctx = document.getElementById('chartCoordTrafico');
+        if(!ctx) return;
+        if(chartCoordTraficoInst) chartCoordTraficoInst.destroy();
+        
+        chartCoordTraficoInst = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Hits/Accesos (Moodle)',
+                        data: dataHits,
+                        backgroundColor: '#cbd5e1', // Gris sutil
+                    },
+                    {
+                        label: 'Correos Automáticos',
+                        data: dataMails,
+                        backgroundColor: '#f87171', // Red claro
+                    },
+                    {
+                        label: 'WhatsApp',
+                        data: dataWa,
+                        backgroundColor: '#34d399', // Green
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'bottom', labels: { boxWidth:12, font: {size:11} } }
+                },
+                scales: {
+                    x: { stacked: true, grid: { display: false } }, // Barras apiladas (Stacked Bars)
+                    y: { stacked: true, beginAtZero: true, grid: { borderDash: [2, 4], color: '#f1f5f9' } }
+                }
+            }
+        });
+    }
+
+    /** MODAL CONTROL */
+    function openCoordInfoModal(feature) {
+        const modal = document.getElementById('coordInfoModal');
+        const tit = document.getElementById('coordInfoTitle');
+        const bod = document.getElementById('coordInfoBody');
+        
+        const data = COORD_MODAL_DATA[feature];
+        if(!data) return;
+
+        tit.innerHTML = `<i class="fa-solid ${data.icon} ${data.color} mr-2"></i> ${data.title}`;
+        bod.innerHTML = data.content;
+
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+    }
+
+    function closeCoordInfoModal() {
+        const modal = document.getElementById('coordInfoModal');
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+    }
+
+    /** GENERAR REPORTE PDF (html2pdf) */
+    function generarReportePdfCoordinadores() {
+        showToast("Generando Reporte", "Convirtiendo tablero a formato PDF con alta resolución...", "info");
+        
+        const originBtn = event.currentTarget.innerHTML;
+        const btn = event.currentTarget;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Procesando...';
+        btn.disabled = true;
+
+        if (typeof html2pdf === 'undefined') {
+            showToast("Dependencia Faltante", "La librería html2pdf no cargó.", "error");
+            btn.innerHTML = originBtn;
+            btn.disabled = false;
+            return;
+        }
+
+        const e = document.getElementById('coordPdfContainer');
+        const dtTable = document.getElementById('dtCoordAsignaturas');
+        const wrapperTable = dtTable ? dtTable.parentElement : null;
+
+        // Clone el contenedor sin la tabla masiva "dtCoordAsignaturas" para no hacer un PDF de 50 páginas.
+        const clone = e.cloneNode(true);
+        // Quitar la sección de Detalladas si es muy grande.
+        const dtDiv = clone.querySelector('#dtCoordAsignaturas');
+        if(dtDiv && dtDiv.closest('.bg-white.rounded-xl.shadow-sm')) {
+             dtDiv.closest('.bg-white.rounded-xl.shadow-sm').remove();
+        } else if (dtDiv && dtDiv.parentElement.parentElement) {
+            // Eliminar solo la última caja si la estructura no la halla
+             let divs = clone.querySelectorAll('.bg-white');
+             if(divs.length > 0) divs[divs.length-1].remove();
+        }
+
+        const opt = {
+            margin: 10,
+            filename: 'Métricas_Gestión_Coordinadores.pdf',
+            image: { type: 'jpeg', quality: 0.98 },
+            html2canvas: { scale: 2, useCORS: true },
+            jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' }
+        };
+
+        html2pdf().set(opt).from(clone).save().then(() => {
+            btn.innerHTML = originBtn;
+            btn.disabled = false;
+            showToast("¡Finalizado!", "Su archivo PDF se descargó.", "success");
+        });
+    }
+</script>
+<!-- ==================== JS END ==================== -->

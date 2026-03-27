@@ -16,7 +16,7 @@ El ecosistema está construido bajo una arquitectura **Serverless (Sin Servidor)
 
 ## 2. Subsistemas del Proyecto
 
-El sistema integral se divide rigurosamente en 8 subsistemas modulares autónomos pero profundamente interconectados.
+El sistema integral se divide rigurosamente en 9 subsistemas modulares autónomos pero profundamente interconectados.
 
 ### 2.1. Subsistema de Seguridad, Identidad y Control de Concurrencia
 
@@ -90,8 +90,23 @@ Módulo analítico (`View_Dashboard_BI.html` / `JS_BI.html` / `Backend_BI.gs`) d
 - **KPIs Transversales:** 4 indicadores calculados en tiempo real: Docentes Analizados, Promedio General (Base 20), Promedio LMS (Base 20), Promedio Acompañamiento.
 - **Arquitectura Frontend Inline:** Para asegurar renderizado correcto independiente de Tailwind CSS CDN, el layout utiliza **inline styles** para propiedades críticas (grid, display, borders), garantizando compatibilidad total con el sandboxing de Google Apps Script.
 
+### 2.9. Subsistema de Inteligencia de Gestión de Coordinadores
+
+Módulo analítico ejecutivo (`View_Dashboard_Coordinadores.html` / `JS_Coordinadores.html` / `Backend_Coordinadores.gs`) para supervisar el rendimiento administrativo de cada coordinador académico.
+
+- **Arquitectura Data Lake (Backend):** A diferencia de los módulos operativos que envían resúmenes precalculados, `Backend_Coordinadores.gs` extrae la totalidad de las aulas crudas de la "Sábana General Docente" y las despacha como un arreglo JSON masivo al navegador. Esto permite filtros instantáneos sin recargas de red.
+- **Separación Estricta de Tiempos (LMS vs Acomp):** El backend indexa las columnas de tiempo usando prefijos discriminantes:
+  - `audit_time_s1..s4` → Minutos precalculados de evaluación LMS (Virtual/Presencial).
+  - `a_audit_time_...` → Minutos precalculados de acompañamiento pedagógico.
+  - Ambos extraen el valor numérico con `parseFloat` purgando sufijos textuales ("15.4 min" → 15.4).
+- **Separación Estricta de Ráfagas (Burst Audits):** Las alertas de ráfaga auditiva (`audit_burst`) quedan separadas por prefijo (`a_audit_burst` para Acomp), permitiendo que la pestaña activa muestre exclusivamente sus propias alertas.
+- **Motor Map-Reduce de Cliente (`JS_Coordinadores.html`):** El frontend agrupa por coordinador, calcula % de avance LMS/Acomp, promedia tiempos, y suma tráfico. Los resultados alimentan 4 gráficos Chart.js (Avance LMS, Avance Acomp, Tiempos, Tráfico Apilado) y dos tablas (Ranking Resumen + Detalle DataTables).
+- **Sistema de Pestañas (Nav Tabs):** Variable de estado `CURRENT_TAB` (ALL/LMS/ACOMP) controla la visibilidad dinámica de columnas DataTables (`.column().visible()`), gráficos y KPIs, permitiendo vistas aisladas sin recargar datos.
+- **Formato Horario Natural:** La función `formatMinutes()` convierte minutos crudos a etiquetas legibles (ej. 145.3 → "2h 25m"), aplicado tanto en la tabla resumen como en el detalle de asignaturas.
+- **Modales Informativos:** Cada KPI tiene un botón `(?)` que abre un modal explicativo (`coordInfoModal`) documentando la fórmula y el significado del indicador.
+
 ---
 
 ### Conclusión Técnica de la Evolución Sistémica
 
-El LMS del entorno actual de USMP transicionó de un entorno de cuadrícula plana a un ecosistema centralizado donde la lógica no es controlada por Visual Basic for Applications (VBA), sino puramente por una SPA desacoplada apoyada por el Cloud de Google (V8 JS Engine), logrando escabilidad asíncrona, robustez anti-concurrente, roles estructurados, auditoría granular, y ahora **análisis visual de resultados docentes** mediante dashboards BI interactivos.
+El LMS del entorno actual de USMP transicionó de un entorno de cuadrícula plana a un ecosistema centralizado donde la lógica no es controlada por Visual Basic for Applications (VBA), sino puramente por una SPA desacoplada apoyada por el Cloud de Google (V8 JS Engine), logrando escabilidad asíncrona, robustez anti-concurrente, roles estructurados, auditoría granular, **análisis visual de resultados docentes** mediante dashboards BI interactivos, y ahora **inteligencia de gestión de coordinadores** con arquitectura Data Lake de alto rendimiento.

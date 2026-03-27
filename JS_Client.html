@@ -317,6 +317,24 @@
         return;
     }
 
+    if (key === 'COORDINADORES') {
+        currentModule = key;
+        document.getElementById('home-view').classList.add('hidden');
+        if(document.getElementById('module-view')) document.getElementById('module-view').style.display='none';
+        if(document.getElementById('module-acomp')) document.getElementById('module-acomp').style.display='none';
+        if(document.getElementById('assignment-view')) document.getElementById('assignment-view').classList.add('hidden');
+        if(document.getElementById('resultados-view')) document.getElementById('resultados-view').classList.add('hidden');
+        if(document.getElementById('module-dashboard-bi')) document.getElementById('module-dashboard-bi').style.display='none';
+        
+        var coordView = document.getElementById('coordinadores-view');
+        if(coordView) {
+            coordView.classList.remove('hidden');
+            coordView.style.display = 'flex';
+            if(typeof initCoordinadores === 'function') initCoordinadores();
+        }
+        return;
+    }
+
     currentModule = key;
     CURRENT_CRITERIA_MAP = (key === 'PRESENCIAL') ? CRITERIA_MAP_PRESENCIAL : CRITERIA_MAP_VIRTUAL;
     
@@ -390,6 +408,9 @@
      
      const biView = document.getElementById('module-dashboard-bi');
      if(biView) { biView.style.display='none'; }
+     
+     const coordView = document.getElementById('coordinadores-view');
+     if(coordView) { coordView.style.display='none'; }
 
      // Restaurar Home (limpiar inline style que BI puso)
      var homeView = document.getElementById('home-view');

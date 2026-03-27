@@ -114,6 +114,10 @@ Este archivo contiene la lógica del servidor. A continuación, cada función ex
 - **Función:** Registro genérico (Emails/WhatsApp).
 - **Lógica:** Recibe el nombre exacto de la columna (ej. `email_felicita_s1`), busca su índice y suma +1.
 
+### `Backend_Coordinadores.gs`
+- **Función:** Endpoint para Módulo de Análisis de Gestión de Coordinadores. 
+- **Lógica:** A diferencia de métricas en servidor, lee la "Sábana General Docente" extrayendo la metadata de auditorías y tiempos (buscando de forma estricta los prefijos `audit_time_s` vs `a_audit_time` para identificar Virtual vs Síncrono) devolviendo el arreglo JSON completo para que el cliente lo manipule (Data-Lake architecture).
+
 ---
 
 ## 3. Frontend (HTML + JS)
@@ -264,6 +268,23 @@ Script Backend independiente que sirve como API para el módulo de Análisis de 
   - Extrae dinámicamente los bloques de columnas LMS (38 cols) y Acomp (11 cols) basándose en las posiciones de `LMS_TOTAL` y `ACOMP_TOTAL`.
   - **Algoritmo de Modalidad:** Col D (index 3) + Col N (index 13) para determinar Virtual/Híbrida vs Presencial.
   - **Retorno:** `{ success: true, headerCodesLMS: [...38], headerCodesAcomp: [...11], biData: [{nombre, asignatura, programa, modalidad, ptsLMS, ptsAcomp, promedio, scoreGral, criteriosLMS: [...38 valores], criteriosAcomp: [...11 valores]}] }`.
+
+---
+
+## 3.7. Módulo de Inteligencia de Coordinadores (Fase 8)
+
+### `Backend_Coordinadores.gs` (Arquitectura Data-Lake)
+A diferencia de los paneles históricos que ejecutaban reducciones (`reduce`) pesadas en el servidor, este backend opera con filosofía **Data Lake**:
+- Escanea la *"Sábana General Docente"*.
+- Indexa algoritmicamente **Ráfagas (Burst Audits)** y **Tiempos Base** diferenciando prefijos estrictamente: `audit_time_s` vs `a_audit_time` para aislar (Separación LMS vs Acompañamiento Síncrono).
+- Envía un arreglo JSON con miles de nodos al navegador delegando el cómputo final al cliente.
+
+### `JS_Coordinadores.html` (Map-Reduce de Cliente)
+- **Motor Map-Reduce:** Reestructura el Data Lake devolviendo agrupaciones directas por Coordinador. Emplea constructores de strings adaptativos para mapear duraciones numéricas a etiquetas formateadas ("3h 25m").
+- **Aislamiento Tolerancia Cero (Nav Tabs):** Funciona bajo un estado dinámico `CURRENT_TAB` (Consolidada/LMS/Acomp). Utilizando `DataTables.column().visible()`, mutila y redibuja en vivo gráficas `Chart.js` y fragmentos de la tabla para ocultar o exponer Tráfico de Ráfagas aisladamente sin tener que recargar el sistema.
+
+### `View_Dashboard_Coordinadores.html`
+- **Estructura:** UI Full-Width. Consiste en una botonera macro de pestañas, barra de KPIs dinámicos superior, grid múltiple (Chart.js), tabla central asíncrona DataTables y Modales Emergentes Explicativos (`coordInfoModal`) que auditan la política detrás de cada medidor KPI.
 
 ---
 

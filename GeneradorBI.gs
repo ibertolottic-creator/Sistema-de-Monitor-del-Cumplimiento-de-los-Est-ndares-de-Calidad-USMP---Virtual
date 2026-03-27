@@ -42,9 +42,27 @@ function generarCabecerasSabanaGeneral() {
     var codesPresencial = hojaPresencial.getRange(1, 21, 1, 34).getValues()[0];
     var titlesPresencial = hojaPresencial.getRange(2, 21, 1, 34).getValues()[0];
 
+    // 2.1 LMS Metadata: Timestamps (Col 56 a 89) = 34 columnas
+    var tsCodesLMS = hojaVirtual.getRange(1, 56, 1, 34).getValues()[0];
+    var tsTitlesLMS = hojaVirtual.getRange(2, 56, 1, 34).getValues()[0];
+    var tsCodesPre = hojaPresencial.getRange(1, 56, 1, 34).getValues()[0];
+    var tsTitlesPre = hojaPresencial.getRange(2, 56, 1, 34).getValues()[0];
+
+    // 2.2 LMS Metadata: KPIs (Col 91 a 134) = 44 columnas (se omitirán las vacías dinámicamente)
+    var kpiCodesLMS = hojaVirtual.getRange(1, 91, 1, 44).getValues()[0];
+    var kpiTitlesLMS = hojaVirtual.getRange(2, 91, 1, 44).getValues()[0];
+
     // 3. Acompañamiento (Criterios Col 21 a 31) - 11 columnas (Fila 1 y 2)
     var codesAcomp = hojaAcomp.getRange(1, 21, 1, 11).getValues()[0];
     var titlesAcomp = hojaAcomp.getRange(2, 21, 1, 11).getValues()[0];
+
+    // 3.1 Acomp Metadata: Timestamps (Col 35 a 45) - 11 columnas
+    var tsCodesAcomp = hojaAcomp.getRange(1, 35, 1, 11).getValues()[0];
+    var tsTitlesAcomp = hojaAcomp.getRange(2, 35, 1, 11).getValues()[0];
+
+    // 3.2 Acomp Metadata: KPIs (Col 47 a 54) - 8 columnas
+    var kpiCodesAcomp = hojaAcomp.getRange(1, 47, 1, 8).getValues()[0];
+    var kpiTitlesAcomp = hojaAcomp.getRange(2, 47, 1, 8).getValues()[0];
 
     // Ensamblar Fila 1 (Códigos) y Fila 2 (Títulos u omitido si es base)
     var fila1 = [];
@@ -93,6 +111,59 @@ function generarCabecerasSabanaGeneral() {
     fila2.push('Puntaje General Centesimal (100%)');
     fila1.push('SCORE_VIG');
     fila2.push('Puntaje General Vigesimal (Base 20)');
+
+    // -----------------------------------------------------------
+    // AGREGANDO LA METADATA DEL TRABAJO DEL COORDINADOR
+    // -----------------------------------------------------------
+
+    // 1. TIMESTAMPS LMS EXPANDIDOS (38 Columnas de Fechas/Horas de Evaluación)
+    for (var i = 0; i < 12; i++) {
+      fila1.push(tsCodesLMS[i] || 'LMS_TS_' + (i+1));
+      fila2.push(tsTitlesLMS[i] || 'Fecha Eval ' + (i+1));
+    }
+    // Exclusivos Virtual
+    for (var i = 12; i < 16; i++) {
+        fila1.push(tsCodesLMS[i] || 'LMS_TS_' + (i+1));
+        fila2.push(tsTitlesLMS[i] || 'Fecha Eval ' + (i+1));
+    }
+    // Exclusivos Presencial
+    for (var i = 12; i < 16; i++) {
+        fila1.push(tsCodesPre[i] || 'LMS_P_TS_' + (i+1));
+        fila2.push(tsTitlesPre[i] || 'Fecha Eval Pre ' + (i+1));
+    }
+    // Resto comunes
+    for (var i = 16; i < 34; i++) {
+        fila1.push(tsCodesLMS[i] || 'LMS_TS_' + (i+1));
+        fila2.push(tsTitlesLMS[i] || 'Fecha Eval ' + (i+1));
+    }
+
+    // 2. TIMESTAMPS ACOMPAÑAMIENTO
+    for (var i = 0; i < 11; i++) {
+        fila1.push(tsCodesAcomp[i] || 'ACOMP_TS_' + (i+1));
+        fila2.push(tsTitlesAcomp[i] || 'Fecha Acomp ' + (i+1));
+    }
+
+    // 3. KPIs LMS (Hits, Auditorías, Emails, WAs)
+    var validIndexLMS = []; // Para trackear qué KPIs reales copiamos (ignorando vacíos)
+    for (var i = 0; i < 44; i++) {
+        var code = kpiCodesLMS[i];
+        if (code && String(code).trim() !== '') {
+            fila1.push(code);
+            fila2.push(kpiTitlesLMS[i] || code);
+            validIndexLMS.push(i);
+        }
+    }
+
+    // 4. KPIs ACOMPAÑAMIENTO
+    var validIndexAcomp = [];
+    for (var i = 0; i < 8; i++) {
+        var code = kpiCodesAcomp[i];
+        if (code && String(code).trim() !== '') {
+            fila1.push(code);
+            fila2.push(kpiTitlesAcomp[i] || code);
+            validIndexAcomp.push(i);
+        }
+    }
 
     // Limpiar hoja y pegar (Las filas 1 y 2)
     var lc = hojaSabana.getLastColumn();
@@ -146,14 +217,22 @@ function sincronizarSabanaBI() {
 
     var datosAsignacion = hojaAsignacion.getRange(2, 1, ultFilaAsig - 1, 19).getValues();
 
-    // En Hojas LMS Criterios inician en Columna 21 (U) y son 34
-    // Score LMS está en Columna 55 (BC)
-    var mapVirtual = construirMapaResultadosParaBI(hojaVirtual, 3, 55, 21, 34);
-    var mapPresencial = construirMapaResultadosParaBI(hojaPresencial, 3, 55, 21, 34);
+    // En Hojas LMS Criterios inician en Columna 21 (U), Notas=34.
+    // Score LMS está en Columna 55 (BC).
+    // Timestamps LMS inician en BD (56) = 34 cols.
+    // KPIs LMS inician en Col 91 = 44 cols.
+    var mapVirtual = construirMapaResultadosParaBI(hojaVirtual, 3, 55, 21, 34, 56, 34, 91, 44);
+    var mapPresencial = construirMapaResultadosParaBI(hojaPresencial, 3, 55, 21, 34, 56, 34, 91, 44);
     
-    // En Hoja Acompañamiento Criterios inician en Columna 21 (U) y son 11
-    // Score Acomp está en Columna 32 (AF)
-    var mapAcomp = construirMapaResultadosParaBI(hojaAcomp, 3, 32, 21, 11);
+    // En Hoja Acompañamiento Criterios inician en Col 21 (U) = 11 coles.
+    // Score Acomp en Columna 32 (AF).
+    // Timestamps Acomp en AI (35) = 11 cols.
+    // KPIs Acomp en AK (47) = 8 cols.
+    var mapAcomp = construirMapaResultadosParaBI(hojaAcomp, 3, 32, 21, 11, 35, 11, 47, 8);
+
+    // Cargar las cabeceras KPI una sola vez en la RAM antes del loop (Para evitar Exceeded maximum execution time)
+    var kpiCodesVirtual = hojaVirtual.getRange(1, 91, 1, 44).getValues()[0];
+    var kpiCodesAc = hojaAcomp.getRange(1, 47, 1, 8).getValues()[0];
 
     var sabanaDatos = [];
 
@@ -169,8 +248,8 @@ function sincronizarSabanaBI() {
 
         var isVirtual = false;
         var isPresencial = false;
-        var objLMS = { crit: new Array(34).fill(''), score: '' };
-        var objAcomp = { crit: new Array(11).fill(''), score: '' };
+        var objLMS = { crit: new Array(34).fill(''), score: '', ts: new Array(34).fill(''), kpi: new Array(44).fill('') };
+        var objAcomp = { crit: new Array(11).fill(''), score: '', ts: new Array(11).fill(''), kpi: new Array(8).fill('') };
 
         var matchV = undefined;
         var matchP = undefined;
@@ -249,6 +328,70 @@ function sincronizarSabanaBI() {
         nuevaFila.push(puntajeGral);
         nuevaFila.push(puntajeVig);
 
+        // ----------------------------------------------------
+        // EMPUJAR METADATA DEL COORDINADOR
+        // ----------------------------------------------------
+        
+        // 1. Expandir Timestamps LMS (38 columnas simulando la expansión 34->38)
+        var tsExpandidos = new Array(38).fill(null);
+        if (objLMS.score !== '' || objLMS.ts[0] !== '') {
+            for (var c=0; c<12; c++) tsExpandidos[c] = objLMS.ts[c] === '' ? null : objLMS.ts[c];
+            if (isVirtual) {
+                for (var c=12; c<16; c++) tsExpandidos[c] = objLMS.ts[c] === '' ? null : objLMS.ts[c];
+            } else if (isPresencial) {
+                for (var c=12; c<16; c++) tsExpandidos[c+4] = objLMS.ts[c] === '' ? null : objLMS.ts[c];
+            }
+            for (var c=16; c<34; c++) tsExpandidos[c+4] = objLMS.ts[c] === '' ? null : objLMS.ts[c];
+        }
+        for (var c=0; c<38; c++) nuevaFila.push(tsExpandidos[c]);
+
+        // 2. Timestamps Acompañamiento (11 cols)
+        for (var c=0; c<11; c++) {
+            var v = objAcomp.ts[c];
+            nuevaFila.push(v === '' || v === undefined ? null : v);
+        }
+
+        // Para los KPIs de LMS, tenemos que extraer solo los índices válidos detectados durante la generación de cabeceras.
+        // Simulamos la detección saltándonos los strings vacíos usando la Fila 1 guardada en la memoria, 
+        // pero como aquí no la tenemos explícitamente arrastrada sin consultar, simplemente usaremos
+        // la misma lógica que descarta strings vacíos asumiendo que el template se respeta.
+        // Haremos un pequeño mapeo estático para las columnas maestras virtuales:
+        // En virtual, KPIs 0 a 43. Los vacíos están en índices fijos (pero varían según sábana).
+        // En su lugar, es más seguro simplemente empujarlos si en el origen tienen valor? 
+        // No, el array debe mantener longitud fija alineada con las cabeceras.
+        
+        // Para simplificar, empujamos los mismos índices no vacíos detectados de las hojas:
+        // En `generarCabecerasSabanaGeneral`, ignorábamos los vacíos. Pero en `sincronizarSabanaBI` también tenemos que ignorarlos.
+        // Usaremos la longitud del array: 
+        var tempKpiLMS = objLMS.kpi;
+        for (var c=0; c<44; c++) {
+            // Asumiremos que si la hoja base LMS (Row 1) tiene texto, es válido. 
+            // Para proteger el layout, pasaremos todo (se omite lógicamente el de cabecera vacía, pero 
+            // no podemos leer Row 1 desde aquí sin hacer un App.getActiveSheet() pesado).
+            // Para empujar FIJO: solo pusimos columnas en Sábana donde `code !== ""`.
+            // Los espacios comunes son indices: 12 (103), 25 (115), 34 (124). Pero para no adivinar, 
+            // inyectaremos TODO el array y luego lo limpiaremos en una versión refactorizada,
+            // pero por velocidad de red, extraigamos los codigos directamente de la fila 1 AQUI.
+            // Para mantener performance, asumiremos que si index c === vacío, lo empujamos y ya. 
+            // ESPERA: En cabeceras, hice `if (code !== '') fila1.push(code)`. La nuevaFila quedará más pequeña.
+            // Es vital que empuje EXACTAMENTE los mismos datos.
+        }
+        // Inyectar KPIs LMS omitiendo los de título vacío
+        for (var c=0; c<44; c++) {
+            if (String(kpiCodesVirtual[c]).trim() !== '') {
+                var valKpi = tempKpiLMS[c] !== undefined && tempKpiLMS[c] !== '' ? tempKpiLMS[c] : null;
+                nuevaFila.push(valKpi);
+            }
+        }
+
+        // Lo mismo para Acomp
+        for (var c=0; c<8; c++) {
+            if (String(kpiCodesAc[c]).trim() !== '') {
+                var valKpiA = objAcomp.kpi[c] !== undefined && objAcomp.kpi[c] !== '' ? objAcomp.kpi[c] : null;
+                nuevaFila.push(valKpiA);
+            }
+        }
+
         sabanaDatos.push(nuevaFila);
     }
 
@@ -268,7 +411,7 @@ function sincronizarSabanaBI() {
   }
 }
 
-function construirMapaResultadosParaBI(hoja, iniciarEnFila, colScore, colCritStart, colCritCount) {
+function construirMapaResultadosParaBI(hoja, iniciarEnFila, colScore, colCritStart, colCritCount, colTsStart, colTsCount, colKpiStart, colKpiCount) {
   var mapa = {};
   if (!hoja) return mapa;
 
@@ -282,6 +425,18 @@ function construirMapaResultadosParaBI(hoja, iniciarEnFila, colScore, colCritSta
   var critMatrix = [];
   if (colCritStart && colCritCount) {
     critMatrix = hoja.getRange(iniciarEnFila, colCritStart, numFilas, colCritCount).getValues();
+  }
+
+  // 1. Extraer Timestamps
+  var tsMatrix = [];
+  if (colTsStart && colTsCount) {
+      tsMatrix = hoja.getRange(iniciarEnFila, colTsStart, numFilas, colTsCount).getValues();
+  }
+
+  // 2. Extraer KPIs
+  var kpiMatrix = [];
+  if (colKpiStart && colKpiCount) {
+      kpiMatrix = hoja.getRange(iniciarEnFila, colKpiStart, numFilas, colKpiCount).getValues();
   }
 
   for (var i = 0; i < numFilas; i++) {
@@ -307,12 +462,18 @@ function construirMapaResultadosParaBI(hoja, iniciarEnFila, colScore, colCritSta
                               ? puntajeHoja 
                               : (sumaCriterios > 0 ? sumaCriterios : '');
 
+           // Extraer filas para metadatos, controlando límites
+           var filaTs = tsMatrix.length > i ? tsMatrix[i] : (colTsCount ? new Array(colTsCount).fill('') : []);
+           var filaKpi = kpiMatrix.length > i ? kpiMatrix[i] : (colKpiCount ? new Array(colKpiCount).fill('') : []);
+
            // Agregamos el paquete de resultados a TODOS LOS IDS extraídos de esa celda maldita
            for (var j = 0; j < idsLimpiosArr.length; j++) {
               var splitId = idsLimpiosArr[j];
               mapa[splitId] = {
                  score: puntajeFinal,
-                 crit: filaCrit
+                 crit: filaCrit,
+                 ts: filaTs,
+                 kpi: filaKpi
               };
            }
        }

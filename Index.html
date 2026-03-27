@@ -7,6 +7,8 @@
   <title>Sistema de Gestión de Calidad</title>
   <!-- Chart.js para Dashboard F3.1 -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- HTML2PDF para exportación de Dashboard de Coordinadores -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <?!= include('CSS'); ?>
 </head>
 <body class="text-gray-800 h-screen flex flex-col overflow-hidden relative">
@@ -37,13 +39,14 @@
   <?!= include('View_Assignment'); ?>
   <?!= include('View_Resultados'); ?>
   <?!= include('View_Dashboard_BI'); ?>
-
+  <?!= include('View_Dashboard_Coordinadores'); ?>
   <?!= include('JS_Templates'); ?>
   <?!= include('JS_Tracking'); ?>
   <?!= include('JS_Client'); ?>
   <?!= include('JS_Acompanamiento'); ?>
   <?!= include('JS_Resultados'); ?>
   <?!= include('JS_BI'); ?>
+  <?!= include('JS_Coordinadores'); ?>
   
   
   <script>
