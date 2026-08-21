@@ -1,0 +1,4 @@
+node_modules/
+Posgrado - Sistema de monitoreo/
+*.pyc
+__pycache__/

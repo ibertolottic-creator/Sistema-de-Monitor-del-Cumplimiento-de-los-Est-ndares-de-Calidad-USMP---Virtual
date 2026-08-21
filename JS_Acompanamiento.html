@@ -272,8 +272,8 @@
       document.getElementById('detail-start-date-acomp').innerText = dateText;
 
       // Links Aulas
-      const ap = currentAcompCourse.links.AP.url;
-      const usmp = currentAcompCourse.links.USMP.url;
+      const ap = (currentAcompCourse.links && currentAcompCourse.links.AP && currentAcompCourse.links.AP.url) ? currentAcompCourse.links.AP.url : (currentAcompCourse.aulaVirtualAp || '');
+      const usmp = (currentAcompCourse.links && currentAcompCourse.links.USMP && currentAcompCourse.links.USMP.url) ? currentAcompCourse.links.USMP.url : (currentAcompCourse.aulaVirtualUsmp || '');
       document.getElementById('link-ap-acomp').href = ap || '#';
       if(!ap) document.getElementById('link-ap-acomp').classList.add('opacity-50', 'pointer-events-none');
       else document.getElementById('link-ap-acomp').classList.remove('opacity-50', 'pointer-events-none');

@@ -40,6 +40,7 @@
   <?!= include('View_Resultados'); ?>
   <?!= include('View_Dashboard_BI'); ?>
   <?!= include('View_Dashboard_Coordinadores'); ?>
+
   <?!= include('JS_Templates'); ?>
   <?!= include('JS_Tracking'); ?>
   <?!= include('JS_Client'); ?>
@@ -52,9 +53,11 @@
   <script>
     // System Initialization
     window.onload = function() {
-       // SEGURIDAD: Forzar ocultamiento del módulo BI al inicio
+       // SEGURIDAD: Forzar ocultamiento de los módulos BI y Coordinadores al inicio
        var biMod = document.getElementById('module-dashboard-bi');
        if (biMod) biMod.style.display = 'none';
+       var coordMod = document.getElementById('coordinadores-view');
+       if (coordMod) coordMod.style.display = 'none';
 
        google.script.run
        .withSuccessHandler(res => {

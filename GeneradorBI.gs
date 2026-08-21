@@ -16,11 +16,20 @@ function generarCabecerasSabanaGeneral() {
 
   try {
     lock.waitLock(10000);
+    var count = generarCabecerasSabanaGeneralSinLock();
+    if(ui) ui.alert("✅ Cabeceras generadas exitosamente (" + count + " columnas).");
+  } catch(e) {
+    if(ui) ui.alert("❌ Error: " + e.toString());
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function generarCabecerasSabanaGeneralSinLock() {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var hojaSabana = ss.getSheetByName(SABANA_DOCENTE);
     if (!hojaSabana) {
-      if(ui) ui.alert("❌ Error: No existe la hoja '" + SABANA_DOCENTE + "'.");
-      return;
+      hojaSabana = ss.insertSheet(SABANA_DOCENTE);
     }
 
     var hojaAsignacion = ss.getSheetByName(SHEET_MAP['ASIGNACION']);
@@ -29,8 +38,7 @@ function generarCabecerasSabanaGeneral() {
     var hojaAcomp = ss.getSheetByName(SHEET_MAP['ACOMPANAMIENTO']);
 
     if (!hojaAsignacion || !hojaVirtual || !hojaAcomp || !hojaPresencial) {
-      if(ui) ui.alert("❌ Error: Faltan hojas origen.");
-      return;
+      throw new Error("Faltan hojas origen.");
     }
 
     // 1. Asignación (A a S) - 19 columnas (Solo Fila 1)
@@ -48,9 +56,11 @@ function generarCabecerasSabanaGeneral() {
     var tsCodesPre = hojaPresencial.getRange(1, 56, 1, 34).getValues()[0];
     var tsTitlesPre = hojaPresencial.getRange(2, 56, 1, 34).getValues()[0];
 
-    // 2.2 LMS Metadata: KPIs (Col 91 a 134) = 44 columnas (se omitirán las vacías dinámicamente)
-    var kpiCodesLMS = hojaVirtual.getRange(1, 91, 1, 44).getValues()[0];
-    var kpiTitlesLMS = hojaVirtual.getRange(2, 91, 1, 44).getValues()[0];
+    // 2.2 LMS Metadata: KPIs (Col 91 a 138) = 48 columnas (se omitirán las vacías dinámicamente)
+    var lastColVirtual = hojaVirtual.getLastColumn();
+    var actualKpiCountVirtual = Math.max(0, Math.min(48, lastColVirtual - 91 + 1));
+    var kpiCodesLMS = actualKpiCountVirtual > 0 ? hojaVirtual.getRange(1, 91, 1, actualKpiCountVirtual).getValues()[0] : [];
+    var kpiTitlesLMS = actualKpiCountVirtual > 0 ? hojaVirtual.getRange(2, 91, 1, actualKpiCountVirtual).getValues()[0] : [];
 
     // 3. Acompañamiento (Criterios Col 21 a 31) - 11 columnas (Fila 1 y 2)
     var codesAcomp = hojaAcomp.getRange(1, 21, 1, 11).getValues()[0];
@@ -60,9 +70,11 @@ function generarCabecerasSabanaGeneral() {
     var tsCodesAcomp = hojaAcomp.getRange(1, 35, 1, 11).getValues()[0];
     var tsTitlesAcomp = hojaAcomp.getRange(2, 35, 1, 11).getValues()[0];
 
-    // 3.2 Acomp Metadata: KPIs (Col 47 a 54) - 8 columnas
-    var kpiCodesAcomp = hojaAcomp.getRange(1, 47, 1, 8).getValues()[0];
-    var kpiTitlesAcomp = hojaAcomp.getRange(2, 47, 1, 8).getValues()[0];
+    // 3.2 Acomp Metadata: KPIs (Col 47 a 58) - 12 columnas
+    var lastColAcomp = hojaAcomp.getLastColumn();
+    var actualKpiCountAcomp = Math.max(0, Math.min(12, lastColAcomp - 47 + 1));
+    var kpiCodesAcomp = actualKpiCountAcomp > 0 ? hojaAcomp.getRange(1, 47, 1, actualKpiCountAcomp).getValues()[0] : [];
+    var kpiTitlesAcomp = actualKpiCountAcomp > 0 ? hojaAcomp.getRange(2, 47, 1, actualKpiCountAcomp).getValues()[0] : [];
 
     // Ensamblar Fila 1 (Códigos) y Fila 2 (Títulos u omitido si es base)
     var fila1 = [];
@@ -73,6 +85,8 @@ function generarCabecerasSabanaGeneral() {
       fila1.push(headersAsig[i] || 'Asig_Col' + (i+1));
       fila2.push(headersAsig[i] || 'Asig_Col' + (i+1)); // Mismo título abajo
     }
+    fila1.push('FECHA_INICIO_CURSO');
+    fila2.push('Fecha de Inicio de Asignatura');
 
     // LMS Criterios Expandidos (38 columnas)
     // 0 a 11 (Comunes)
@@ -145,7 +159,7 @@ function generarCabecerasSabanaGeneral() {
 
     // 3. KPIs LMS (Hits, Auditorías, Emails, WAs)
     var validIndexLMS = []; // Para trackear qué KPIs reales copiamos (ignorando vacíos)
-    for (var i = 0; i < 44; i++) {
+    for (var i = 0; i < kpiCodesLMS.length; i++) {
         var code = kpiCodesLMS[i];
         if (code && String(code).trim() !== '') {
             fila1.push(code);
@@ -156,7 +170,7 @@ function generarCabecerasSabanaGeneral() {
 
     // 4. KPIs ACOMPAÑAMIENTO
     var validIndexAcomp = [];
-    for (var i = 0; i < 8; i++) {
+    for (var i = 0; i < kpiCodesAcomp.length; i++) {
         var code = kpiCodesAcomp[i];
         if (code && String(code).trim() !== '') {
             fila1.push(code);
@@ -176,19 +190,16 @@ function generarCabecerasSabanaGeneral() {
     hojaSabana.getRange(2, 1, 1, fila2.length).setValues([fila2])
               .setFontWeight("bold").setBackground("#efefef");
 
-    if(ui) ui.alert("✅ Cabeceras generadas exitosamente (" + fila1.length + " columnas).");
-  } catch(e) {
-    if(ui) ui.alert("❌ Error: " + e.toString());
-  } finally {
-    lock.releaseLock();
-  }
+    return fila1.length;
 }
 
-function sincronizarSabanaBI() {
+function sincronizarSabanaBI(silentMode) {
   var ui = null;
-  try {
-     ui = SpreadsheetApp.getUi();
-  } catch(e) {}
+  if (!silentMode) {
+    try {
+       ui = SpreadsheetApp.getUi();
+    } catch(e) {}
+  }
 
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(10000)) {
@@ -198,41 +209,44 @@ function sincronizarSabanaBI() {
 
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
+    // Regenerar cabeceras siempre para asegurar que la estructura esté 100% sincronizada con los datos
+    generarCabecerasSabanaGeneralSinLock();
     var hojaSabana = ss.getSheetByName(SABANA_DOCENTE);
-    if (!hojaSabana) {
-      if(ui) ui.alert("❌ Error: No existe la hoja " + SABANA_DOCENTE);
-      return;
-    }
+    if (!hojaSabana) return;
 
     var hojaAsignacion = ss.getSheetByName(SHEET_MAP['ASIGNACION']);
     var hojaVirtual = ss.getSheetByName(SHEET_MAP['VIRTUAL']);
     var hojaPresencial = ss.getSheetByName(SHEET_MAP['PRESENCIAL']);
     var hojaAcomp = ss.getSheetByName(SHEET_MAP['ACOMPANAMIENTO']);
 
+    var globalStartDate = '';
+    if (hojaVirtual && hojaVirtual.getLastRow() >= 2) {
+        globalStartDate = hojaVirtual.getRange("T2").getValue();
+    }
+
     var ultFilaAsig = hojaAsignacion.getLastRow();
     if (ultFilaAsig < 2) {
       if(ui) ui.alert("Sin datos en Asignación.");
       return;
     }
-
     var datosAsignacion = hojaAsignacion.getRange(2, 1, ultFilaAsig - 1, 19).getValues();
 
-    // En Hojas LMS Criterios inician en Columna 21 (U), Notas=34.
-    // Score LMS está en Columna 55 (BC).
-    // Timestamps LMS inician en BD (56) = 34 cols.
-    // KPIs LMS inician en Col 91 = 44 cols.
-    var mapVirtual = construirMapaResultadosParaBI(hojaVirtual, 3, 55, 21, 34, 56, 34, 91, 44);
-    var mapPresencial = construirMapaResultadosParaBI(hojaPresencial, 3, 55, 21, 34, 56, 34, 91, 44);
+    // Mapas de Notas + Metadata
+    // Virtual y Presencial: Criterios Col 21 a 54 (34 cols), Score Col 55, TS Col 56 a 89 (34 cols), KPIs Col 91 a 138 (48 cols)
+    var mapVirtual = construirMapaResultadosParaBI(hojaVirtual, 3, 55, 21, 34, 56, 34, 91, 48);
+    var mapPresencial = construirMapaResultadosParaBI(hojaPresencial, 3, 55, 21, 34, 56, 34, 91, 48);
     
-    // En Hoja Acompañamiento Criterios inician en Col 21 (U) = 11 coles.
-    // Score Acomp en Columna 32 (AF).
-    // Timestamps Acomp en AI (35) = 11 cols.
-    // KPIs Acomp en AK (47) = 8 cols.
-    var mapAcomp = construirMapaResultadosParaBI(hojaAcomp, 3, 32, 21, 11, 35, 11, 47, 8);
+    // Acompañamiento: Criterios Col 21 a 31 (11 cols), Score Col 32, TS Col 35 a 45 (11 cols), KPIs Col 47 a 58 (12 cols)
+    var mapAcomp = construirMapaResultadosParaBI(hojaAcomp, 3, 32, 21, 11, 35, 11, 47, 12);
 
-    // Cargar las cabeceras KPI una sola vez en la RAM antes del loop (Para evitar Exceeded maximum execution time)
-    var kpiCodesVirtual = hojaVirtual.getRange(1, 91, 1, 44).getValues()[0];
-    var kpiCodesAc = hojaAcomp.getRange(1, 47, 1, 8).getValues()[0];
+    // Obtener códigos de KPIs reales para mapear uno a uno omitiendo vacíos
+    var lastColVirtualSync = hojaVirtual.getLastColumn();
+    var actualKpiCountVirtualSync = Math.max(0, Math.min(48, lastColVirtualSync - 91 + 1));
+    var kpiCodesVirtual = actualKpiCountVirtualSync > 0 ? hojaVirtual.getRange(1, 91, 1, actualKpiCountVirtualSync).getValues()[0] : [];
+
+    var lastColAcompSync = hojaAcomp.getLastColumn();
+    var actualKpiCountAcompSync = Math.max(0, Math.min(12, lastColAcompSync - 47 + 1));
+    var kpiCodesAc = actualKpiCountAcompSync > 0 ? hojaAcomp.getRange(1, 47, 1, actualKpiCountAcompSync).getValues()[0] : [];
 
     var sabanaDatos = [];
 
@@ -293,7 +307,8 @@ function sincronizarSabanaBI() {
            }
         }
 
-        var nuevaFila = filaAsig.slice(); // 1 a 19
+        var nuevaFila = filaAsig.slice(0, 19); // 1 a 19
+        nuevaFila.push(globalStartDate); // Columna T (Índice 19) es la fecha de inicio global del curso de la celda T2 de Virtual
         
         // Agregar los 38 criterios de LMS (fusionados)
         var critExpandidos = new Array(38).fill(null);
@@ -351,42 +366,20 @@ function sincronizarSabanaBI() {
             nuevaFila.push(v === '' || v === undefined ? null : v);
         }
 
-        // Para los KPIs de LMS, tenemos que extraer solo los índices válidos detectados durante la generación de cabeceras.
-        // Simulamos la detección saltándonos los strings vacíos usando la Fila 1 guardada en la memoria, 
-        // pero como aquí no la tenemos explícitamente arrastrada sin consultar, simplemente usaremos
-        // la misma lógica que descarta strings vacíos asumiendo que el template se respeta.
-        // Haremos un pequeño mapeo estático para las columnas maestras virtuales:
-        // En virtual, KPIs 0 a 43. Los vacíos están en índices fijos (pero varían según sábana).
-        // En su lugar, es más seguro simplemente empujarlos si en el origen tienen valor? 
-        // No, el array debe mantener longitud fija alineada con las cabeceras.
-        
-        // Para simplificar, empujamos los mismos índices no vacíos detectados de las hojas:
-        // En `generarCabecerasSabanaGeneral`, ignorábamos los vacíos. Pero en `sincronizarSabanaBI` también tenemos que ignorarlos.
-        // Usaremos la longitud del array: 
+        // Para los KPIs de LMS
         var tempKpiLMS = objLMS.kpi;
-        for (var c=0; c<44; c++) {
-            // Asumiremos que si la hoja base LMS (Row 1) tiene texto, es válido. 
-            // Para proteger el layout, pasaremos todo (se omite lógicamente el de cabecera vacía, pero 
-            // no podemos leer Row 1 desde aquí sin hacer un App.getActiveSheet() pesado).
-            // Para empujar FIJO: solo pusimos columnas en Sábana donde `code !== ""`.
-            // Los espacios comunes son indices: 12 (103), 25 (115), 34 (124). Pero para no adivinar, 
-            // inyectaremos TODO el array y luego lo limpiaremos en una versión refactorizada,
-            // pero por velocidad de red, extraigamos los codigos directamente de la fila 1 AQUI.
-            // Para mantener performance, asumiremos que si index c === vacío, lo empujamos y ya. 
-            // ESPERA: En cabeceras, hice `if (code !== '') fila1.push(code)`. La nuevaFila quedará más pequeña.
-            // Es vital que empuje EXACTAMENTE los mismos datos.
-        }
+
         // Inyectar KPIs LMS omitiendo los de título vacío
-        for (var c=0; c<44; c++) {
-            if (String(kpiCodesVirtual[c]).trim() !== '') {
+        for (var c = 0; c < kpiCodesVirtual.length; c++) {
+            if (kpiCodesVirtual[c] && String(kpiCodesVirtual[c]).trim() !== '') {
                 var valKpi = tempKpiLMS[c] !== undefined && tempKpiLMS[c] !== '' ? tempKpiLMS[c] : null;
                 nuevaFila.push(valKpi);
             }
         }
 
         // Lo mismo para Acomp
-        for (var c=0; c<8; c++) {
-            if (String(kpiCodesAc[c]).trim() !== '') {
+        for (var c = 0; c < kpiCodesAc.length; c++) {
+            if (kpiCodesAc[c] && String(kpiCodesAc[c]).trim() !== '') {
                 var valKpiA = objAcomp.kpi[c] !== undefined && objAcomp.kpi[c] !== '' ? objAcomp.kpi[c] : null;
                 nuevaFila.push(valKpiA);
             }
@@ -403,9 +396,13 @@ function sincronizarSabanaBI() {
        hojaSabana.getRange(3, 1, sabanaDatos.length, sabanaDatos[0].length).setValues(sabanaDatos);
     }
 
+    // Registrar tiempo en caché para auto-actualización rápida de dashboards
+    PropertiesService.getScriptProperties().setProperty('LAST_BI_SYNC', new Date().getTime().toString());
+
     if(ui) ui.alert("✅ Sábana BI Sincronizada exitosamente. Total registros: " + sabanaDatos.length);
   } catch(e) {
     if(ui) ui.alert("❌ Error: " + e.toString());
+    throw e;
   } finally {
     lock.releaseLock();
   }
@@ -436,7 +433,11 @@ function construirMapaResultadosParaBI(hoja, iniciarEnFila, colScore, colCritSta
   // 2. Extraer KPIs
   var kpiMatrix = [];
   if (colKpiStart && colKpiCount) {
-      kpiMatrix = hoja.getRange(iniciarEnFila, colKpiStart, numFilas, colKpiCount).getValues();
+      var lastCol = hoja.getLastColumn();
+      var actualKpiCount = Math.max(0, Math.min(colKpiCount, lastCol - colKpiStart + 1));
+      if (actualKpiCount > 0) {
+          kpiMatrix = hoja.getRange(iniciarEnFila, colKpiStart, numFilas, actualKpiCount).getValues();
+      }
   }
 
   for (var i = 0; i < numFilas; i++) {
@@ -466,7 +467,7 @@ function construirMapaResultadosParaBI(hoja, iniciarEnFila, colScore, colCritSta
            var filaTs = tsMatrix.length > i ? tsMatrix[i] : (colTsCount ? new Array(colTsCount).fill('') : []);
            var filaKpi = kpiMatrix.length > i ? kpiMatrix[i] : (colKpiCount ? new Array(colKpiCount).fill('') : []);
 
-           // Agregamos el paquete de resultados a TODOS LOS IDS extraídos de esa celda maldita
+           // Agregamos el paquete de resultados a TODOS LOS IDS extraídos de esa celda
            for (var j = 0; j < idsLimpiosArr.length; j++) {
               var splitId = idsLimpiosArr[j];
               mapa[splitId] = {
@@ -486,39 +487,53 @@ function construirMapaResultadosParaBI(hoja, iniciarEnFila, colScore, colCritSta
  * ======================================================================
  * FUNCION DE DIAGNOSTICO DE CADENAS MATRICIALES (SOLO DEBUG)
  * ======================================================================
- * Analiza un ID rebelde (ej. P202602PL0102CU2693) buscando retornos de carro
- * o bytes invisibles que engañan al comparador.
  */
-function diagnosticarIDsOcultos() {
-  var idRebeldeBuscar = "P202602PL0102CU2693"; // Parte de un curso de RAMIREZ HOYOS
-  Logger.log("--- INICIANDO DIAGNÓSTICO DE ID REBELDE: " + idRebeldeBuscar + " ---");
+function diagnosticarIDsOcultos(testId) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var hojaAsignacion = ss.getSheetByName(SHEET_MAP['ASIGNACION']);
   var hojaVirtual = ss.getSheetByName(SHEET_MAP['VIRTUAL']);
   var hojaPresencial = ss.getSheetByName(SHEET_MAP['PRESENCIAL']);
 
-  var escrutador = function(hoja, nombreHoja) {
-    if(!hoja) return;
-    var lr = hoja.getLastRow();
-    if(lr < 3) return;
-    var idsOrigen = hoja.getRange(3, 16, lr - 2, 1).getValues();
-    
-    for (var i = 0; i < idsOrigen.length; i++) {
-      var rawString = String(idsOrigen[i][0]);
-      if (rawString.indexOf(idRebeldeBuscar) !== -1) {
-         Logger.log("\n[!] ENCONTRADO EN HOJA: " + nombreHoja + " (Fila " + (i+3) + ")");
-         Logger.log("Texto Crudo (Raw): [" + rawString + "]");
-         Logger.log("Longitud Cruda: " + rawString.length);
-         Logger.log("--- Desglose de Bytes ---");
-         for (var c = 0; c < rawString.length; c++) {
-            Logger.log("Char '" + rawString.charAt(c) + "' -> CharCode: " + rawString.charCodeAt(c));
-         }
-         var idLimpio = rawString.toUpperCase().trim().replace(/[\r\n\t]/g, '');
-         Logger.log("Texto Saneado Total: [" + idLimpio + "] -> Longitud: " + idLimpio.length);
-      }
-    }
-  };
+  var idABuscar = testId || "P202602PL0102CU2693";
+  Logger.log("Buscando: " + idABuscar);
 
-  escrutador(hojaVirtual, "LMS-virtual");
-  escrutador(hojaPresencial, "LMS-presencial");
-  Logger.log("\n--- FIN DEL DIAGNÓSTICO ---");
+  var foundInAsig = false;
+  var rowsAsig = hojaAsignacion.getDataRange().getValues();
+  for(var i=1; i<rowsAsig.length; i++) {
+     var cellVal = String(rowsAsig[i][15]).trim();
+     if(cellVal.indexOf(idABuscar) !== -1) {
+        Logger.log("Encontrado en Asignación Fila " + (i+1) + " Valor Celda: [" + cellVal + "]");
+        foundInAsig = true;
+     }
+  }
+
+  var foundInVirtual = false;
+  if (hojaVirtual) {
+    var rowsV = hojaVirtual.getDataRange().getValues();
+    for(var i=2; i<rowsV.length; i++) {
+       var cellVal = String(rowsV[i][15]).trim();
+       if(cellVal.indexOf(idABuscar) !== -1) {
+          Logger.log("Encontrado en Virtual Fila " + (i+1) + " Valor Celda: [" + cellVal + "]");
+          foundInVirtual = true;
+       }
+    }
+  }
+
+  var foundInPresencial = false;
+  if (hojaPresencial) {
+    var rowsP = hojaPresencial.getDataRange().getValues();
+    for(var i=2; i<rowsP.length; i++) {
+       var cellVal = String(rowsP[i][15]).trim();
+       if(cellVal.indexOf(idABuscar) !== -1) {
+          Logger.log("Encontrado en Presencial Fila " + (i+1) + " Valor Celda: [" + cellVal + "]");
+          foundInPresencial = true;
+       }
+    }
+  }
+
+  return {
+    asig: foundInAsig,
+    virtual: foundInVirtual,
+    presencial: foundInPresencial
+  };
 }

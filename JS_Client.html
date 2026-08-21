@@ -126,17 +126,46 @@
   // --- LOGIC: STATUS AND COLOR ---
   function parseDate(dateStr) {
       if (!dateStr) return null;
-      let d = new Date(dateStr);
-      if (!isNaN(d.getTime())) return d;
+      var str = String(dateStr).trim();
       
-      // Fallback for DD/MM/YYYY
-      const parts = dateStr.split('/');
-      if (parts.length === 3) {
-          // Month is 0-indexed in JS Date(Y, M, D)
-          d = new Date(parts[2], parts[1] - 1, parts[0]);
-          if (!isNaN(d.getTime())) return d;
+      // Priorizar formato DD/MM/YYYY o DD/MM/YYYY HH:mm:ss si contiene barra
+      if (str.indexOf('/') !== -1) {
+          var parts = str.split(' ');
+          var dateParts = parts[0].split('/');
+          if (dateParts.length === 3) {
+              var day = parseInt(dateParts[0], 10);
+              var month = parseInt(dateParts[1], 10) - 1;
+              var year = parseInt(dateParts[2], 10);
+              
+              var hour = 0, min = 0, sec = 0;
+              if (parts.length > 1) {
+                  var timeParts = parts[1].split(':');
+                  if (timeParts.length >= 2) {
+                      hour = parseInt(timeParts[0], 10);
+                      min = parseInt(timeParts[1], 10);
+                      if (timeParts.length >= 3) {
+                          sec = parseInt(timeParts[2], 10);
+                      }
+                  }
+              }
+              var d = new Date(year, month, day, hour, min, sec);
+              if (!isNaN(d.getTime())) return d;
+          }
       }
+      
+      var d = new Date(str);
+      if (!isNaN(d.getTime())) return d;
       return null;
+  }
+
+  function escapeHtml(text) {
+      if (text === null || text === undefined) return '';
+      return String(text)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#039;');
   }
 
   // --- LOGIC: STATUS AND COLOR ---
@@ -257,12 +286,14 @@
         google.script.run
         .withSuccessHandler(d => {
              if(handleMaintenanceResponse(d)) return;
-             if (d && d.role === 'ERROR') {
-                 alert("Error Backend: " + d.message);
+             if (d && (d.role === 'ERROR' || d.role === 'UNAUTHORIZED')) {
+                 alert(d.message || "Acceso restringido a coordinadores asignados.");
+                 goHome();
                  return;
              }
              if (!d || !d.courses) {
                  alert("Error: No se recibieron datos de Acompañamiento.");
+                 goHome();
                  return;
              }
              
@@ -272,6 +303,7 @@
         })
         .withFailureHandler(e => {
             alert("Error de Conexión: " + e);
+            goHome();
         })
         .getInitialData(key);
         
@@ -312,6 +344,7 @@
         }
         if(document.getElementById('assignment-view')) document.getElementById('assignment-view').classList.add('hidden');
         if(document.getElementById('resultados-view')) document.getElementById('resultados-view').classList.add('hidden');
+        if(document.getElementById('coordinadores-view')) document.getElementById('coordinadores-view').style.display='none';
         
         if(typeof mostrarModuloBI === 'function') mostrarModuloBI();
         return;
@@ -356,29 +389,30 @@
     if (globalActions) globalActions.style.display = 'none';
 
     google.script.run
-    .withSuccessHandler(d => {
-         if(handleMaintenanceResponse(d)) return;
-         if (d && d.role === 'ERROR') {
-             alert("Error Backend: " + d.message);
-             document.getElementById('spinner-box').innerHTML = `<p class="text-red-600 font-bold">${d.message}</p>`;
-             return;
-         }
-         if (!d || !d.courses) {
-             alert("Error: No se recibieron datos.");
-             return;
-         }
+     .withSuccessHandler(d => {
+          if(handleMaintenanceResponse(d)) return;
+          if (d && (d.role === 'ERROR' || d.role === 'UNAUTHORIZED')) {
+              alert(d.message || "Acceso restringido.");
+              goHome();
+              return;
+          }
+          if (!d || !d.courses) {
+              alert("Error: No se recibieron datos.");
+              goHome();
+              return;
+          }
 
-         document.getElementById('spinner-box').classList.add('hidden');
-         document.getElementById('main-content').classList.remove('hidden');
-         document.getElementById('user-email').innerText = d.userEmail;
-         globalData = d;
-         toggleView('OVERVIEW');
-    })
-    .withFailureHandler(e => {
-        alert("Error de Conexión: " + e);
-        document.getElementById('spinner-box').innerHTML = `<p class="text-red-600 font-bold">Error de Conexión: ${e}</p>`;
-    })
-    .getInitialData(key);
+          document.getElementById('spinner-box').classList.add('hidden');
+          document.getElementById('main-content').classList.remove('hidden');
+          document.getElementById('user-email').innerText = d.userEmail;
+          globalData = d;
+          toggleView('OVERVIEW');
+     })
+     .withFailureHandler(e => {
+         alert("Error de Conexión: " + e);
+         goHome();
+     })
+     .getInitialData(key);
   }
   
   function toggleView(view) {
@@ -472,23 +506,30 @@
 
   function renderAssignmentDashboard() {
       // 1. Calcular totales por coordinador
-      // El key será 'nombre|email' o solo 'nombre' si email no viene 100% igual. Usaremos nombre+email garantizado por option.
       const stats = {};
       let totalAssigned = 0;
       let totalUnassigned = 0;
 
       // Inicializar stats para todos los posibles (incluso si tienen 0)
       globalCoordinators.forEach(c => {
-          stats[`${c.name}|${c.email}`] = { name: c.name, courses: 0, students: 0, color: getRandomColor(c.name) };
+          stats[`${c.name}|${c.email}`] = { name: c.name, email: c.email, courses: 0, students: 0, color: getRandomColor(c.name) };
       });
 
       globalAssignments.forEach(c => {
           let sCount = parseInt(c.studentsCount) || 0;
-          if(c.currentCoordName && c.currentCoordEmail) {
-              const key = `${c.currentCoordName}|${c.currentCoordEmail}`;
-              if(!stats[key]) {
-                  // Si por alguna razón el asignado actual no está en la lista de coordinadores general
-                  stats[key] = { name: c.currentCoordName, courses: 0, students: 0, color: getRandomColor(c.currentCoordName) };
+          const coordName = (c.currentCoordName || c.assignedCoordName || '').trim();
+          const coordEmail = (c.currentCoordEmail || c.assignedCoordEmail || '').trim();
+
+          if (coordName) {
+              let key = `${coordName}|${coordEmail}`;
+              if (!stats[key]) {
+                  // Buscar coincidencia por nombre en globalCoordinators
+                  const found = globalCoordinators.find(gc => gc.name.toLowerCase() === coordName.toLowerCase());
+                  if (found) {
+                      key = `${found.name}|${found.email}`;
+                  } else {
+                      stats[key] = { name: coordName, email: coordEmail, courses: 0, students: 0, color: getRandomColor(coordName) };
+                  }
               }
               stats[key].courses++;
               stats[key].students += sCount;
@@ -633,14 +674,17 @@
       const container = document.getElementById('assign-list');
       container.innerHTML = '';
 
-      const term = document.getElementById('assign-search').value.toLowerCase();
+      const term = document.getElementById('assign-search').value.toLowerCase().trim();
       const filtered = globalAssignments.filter(c => {
-          const isUnassigned = term === "sin asignar" && (!c.currentCoordName || c.currentCoordName.trim() === "");
+          const coordName = (c.currentCoordName || c.assignedCoordName || '').trim();
+          const prof = (c.professor || c.teacherName || '').trim();
+          const prog = (c.program || c.facultad || '').trim();
+          const isUnassigned = term === "sin asignar" && (!coordName || coordName === "");
           return isUnassigned ||
-                 String(c.courseName).toLowerCase().includes(term) || 
-                 String(c.professor).toLowerCase().includes(term) ||
-                 String(c.program).toLowerCase().includes(term) ||
-                 String(c.currentCoordName).toLowerCase().includes(term);
+                 String(c.courseName || '').toLowerCase().includes(term) || 
+                 String(prof).toLowerCase().includes(term) ||
+                 String(prog).toLowerCase().includes(term) ||
+                 String(coordName).toLowerCase().includes(term);
       });
 
       document.getElementById('assign-count').innerText = `${filtered.length} REGISTROS`;
@@ -662,12 +706,18 @@
           const row = document.createElement('div');
           row.className = "bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex flex-col xl:flex-row xl:items-center justify-between gap-4";
           
+          const coordName = (c.currentCoordName || c.assignedCoordName || '').trim();
+          const coordEmail = (c.currentCoordEmail || c.assignedCoordEmail || '').trim();
           let selectValue = "";
-          if(c.currentCoordName && c.currentCoordEmail) {
-             selectValue = `${c.currentCoordName}|${c.currentCoordEmail}`;
-             // Verificar si ya existe. (Ignorando la estrellita en la validación del value, porque el HTML busca coincidencias exactas del atributo value)
-             if(!optionsHTML.includes(`value="${selectValue}"`)) {
-                 optionsHTML += `<option value="${selectValue}" selected>${c.currentCoordName} (${c.currentCoordEmail})</option>`;
+          if (coordName) {
+             if (coordEmail) {
+                 selectValue = `${coordName}|${coordEmail}`;
+             } else {
+                 const found = globalCoordinators.find(gc => gc.name.toLowerCase() === coordName.toLowerCase());
+                 if (found) selectValue = `${found.name}|${found.email}`;
+             }
+             if (selectValue && !optionsHTML.includes(`value="${selectValue}"`)) {
+                 optionsHTML += `<option value="${selectValue}" selected>${coordName} ${coordEmail ? '('+coordEmail+')' : ''}</option>`;
              }
           }
 
@@ -968,7 +1018,7 @@
   function renderDashboardStats(courses) {
       // 1. Totales
       const totalCourses = courses.length;
-      const totalStudents = courses.reduce((acc, c) => acc + (parseInt(c.studentsCount)||0), 0);
+      const totalStudents = courses.reduce((acc, c) => acc + (parseInt(c.studentsCount || c.numEstudiantes) || 0), 0);
       
       // 2. Promedio Total Vigesimal
       let sumDef = 0;
@@ -989,7 +1039,7 @@
         weeks.forEach(w => {
             let sumProg = 0;
             courses.forEach(c => {
-                const s = getWeekStats(c.startDate, w, c.grades);
+                const s = getWeekStats(c.startDate || c.globalStartDate || c.periodoFecha, w, c.grades);
                 sumProg += s.progress;
             });
             const avgProg = Math.round(sumProg / Math.max(totalCourses, 1));
@@ -1063,19 +1113,17 @@
      const container = document.getElementById('overview-list');
      container.innerHTML = '';
      
-     const term = document.getElementById('search-input').value.toLowerCase();
-     const filtered = globalData.courses.filter(c => c.courseName.toLowerCase().includes(term) || c.professor.toLowerCase().includes(term));
+     const term = (document.getElementById('search-input')?.value || '').toLowerCase();
+     const coursesList = (globalData && globalData.courses) ? globalData.courses : [];
+     const filtered = coursesList.filter(c => 
+         (c.courseName || '').toLowerCase().includes(term) || 
+         (c.professor || c.teacherName || '').toLowerCase().includes(term)
+     );
      const countEl = document.getElementById('overview-count');
      if(countEl) countEl.innerText = filtered.length + ' ASIGNATURAS';
      const countSidebar = document.getElementById('course-count');
      if(countSidebar) countSidebar.innerText = filtered.length + ' ASIGNATURAS';
      
-     // Render Header Stats based on FILTERED data (or global? strict requirement says summary of assignments... usually implies global, but consistent UI matches filter)
-     // Let's use GLOBAL for the top stats to give a big picture, or filtered? 
-     // Requirement: "un resumen de las cantidades de asignaturas, cantidad de asigaturas asignadas..."
-     // Usually dashboard headers show total status. Let's use globalData.courses for stats unless filtering is active?
-     // Actually, if I filter, I might want to see stats for that professor. 
-     // Let's pass 'filtered' to renderDashboardStats so it updates dynamically!
      renderDashboardStats(filtered);
      
      const isGuest = window.AUTH_DATA && window.AUTH_DATA.isGuest;
@@ -1107,8 +1155,9 @@
           'ws-red': 'bg-red-500'
         };
 
+        const courseStartDate = c.startDate || c.globalStartDate || c.periodoFecha;
         ['S1','S2','S3','S4'].forEach(w => {
-            const s = getWeekStats(c.startDate, w, c.grades);
+            const s = getWeekStats(courseStartDate, w, c.grades);
             totalProgress += s.progress;
             
             const colorClass = COLOR_MAP[s.color] || 'bg-gray-200';
@@ -1126,15 +1175,16 @@
         // VIGESIMAL CALCULATION
         const avgScore = getCourseVigesimal(c);
         const scoreVal = parseFloat(avgScore);
-        // Colores: 0-10.49 Rojo, 10.5-13.99 Ambar, 14-20 Verde (Estándar académico)
-        // O simple: <11 Rojo, <14 Ambar, >=14 Verde
         const scoreColor = scoreVal>=14?'text-green-600':scoreVal>=10.5?'text-yellow-600':'text-red-600';
         
+        const linkApUrl = (c.links && c.links.AP && c.links.AP.url) ? c.links.AP.url : (c.aulaVirtualAp || '');
+        const linkUsmpUrl = (c.links && c.links.USMP && c.links.USMP.url) ? c.links.USMP.url : (c.aulaVirtualUsmp || '');
+
         row.innerHTML = `
            <div class="flex-1 min-w-0">
-              <h3 class="font-bold text-gray-800 text-sm group-hover:text-red-700 transition-colors truncate mb-0.5">${c.courseName}</h3>
-              <p class="text-xs text-gray-500 font-medium truncate mb-1"><i class="fa-regular fa-user mr-1"></i> ${c.professor}</p>
-              <p class="text-[10px] text-blue-600 font-bold truncate tracking-wide"><i class="fa-solid fa-user-shield mr-1 text-blue-400"></i> ${c.coordName ? c.coordName.toUpperCase() : 'SIN ASIGNAR'}</p>
+              <h3 class="font-bold text-gray-800 text-sm group-hover:text-red-700 transition-colors truncate mb-0.5">${escapeHtml(c.courseName || '')}</h3>
+              <p class="text-xs text-gray-500 font-medium truncate mb-1"><i class="fa-regular fa-user mr-1"></i> ${escapeHtml(c.professor || c.teacherName || 'Docente no asignado')}</p>
+              <p class="text-[10px] text-blue-600 font-bold truncate tracking-wide"><i class="fa-solid fa-user-shield mr-1 text-blue-400"></i> ${(c.coordName || c.coordinadorNombre || 'SIN ASIGNAR').toUpperCase()}</p>
            </div>
            
            <div class="flex items-center gap-3 border-l border-r border-gray-100 px-4">
@@ -1147,8 +1197,8 @@
            </div>
            
            <div class="flex gap-2">
-              <a href="${c.links.AP.url || '#'}" target="_blank" onclick="logAccess('AP')" class="${c.links.AP.url?'':'opacity-50 pointer-events-none'} text-xs bg-blue-50 text-blue-600 px-2 py-1.5 rounded font-bold hover:bg-blue-100 transition-colors" title="Aula Virtual AP"><i class="fa-solid fa-globe"></i></a>
-              <a href="${c.links.USMP.url || '#'}" target="_blank" onclick="logAccess('USMP')" class="${c.links.USMP.url?'':'opacity-50 pointer-events-none'} text-xs bg-red-50 text-red-600 px-2 py-1.5 rounded font-bold hover:bg-red-100 transition-colors" title="Aula Virtual USMP"><i class="fa-solid fa-university"></i></a>
+              <a href="${linkApUrl || '#'}" target="_blank" onclick="logAccess('AP', ${c.rowIndex}, 'S1')" class="${linkApUrl?'':'opacity-50 pointer-events-none'} text-xs bg-blue-50 text-blue-600 px-2 py-1.5 rounded font-bold hover:bg-blue-100 transition-colors" title="Aula Virtual AP"><i class="fa-solid fa-globe"></i></a>
+              <a href="${linkUsmpUrl || '#'}" target="_blank" onclick="logAccess('USMP', ${c.rowIndex}, 'S1')" class="${linkUsmpUrl?'':'opacity-50 pointer-events-none'} text-xs bg-red-50 text-red-600 px-2 py-1.5 rounded font-bold hover:bg-red-100 transition-colors" title="Aula Virtual USMP"><i class="fa-solid fa-university"></i></a>
               <button class="text-xs font-bold text-gray-400 group-hover:text-gray-600 px-2 py-1.5 hover:bg-gray-100 rounded transition-colors"><i class="fa-solid fa-chevron-right"></i></button>
            </div>
         `;
@@ -1160,21 +1210,27 @@
      currentCourse = c;
      toggleView('DETAIL');
      
-     document.getElementById('detail-course-name').innerText = c.courseName;
-     document.getElementById('detail-professor').innerText = c.professor;
-     document.getElementById('detail-program').innerText = c.program;
-     document.getElementById('detail-students').innerText = c.studentsCount + ' Alumnos';
+     document.getElementById('detail-course-name').innerText = c.courseName || '';
+     document.getElementById('detail-professor').innerText = c.professor || c.teacherName || '';
+     document.getElementById('detail-program').innerText = c.program || c.facultad || '';
+     document.getElementById('detail-students').innerText = (c.studentsCount || c.numEstudiantes || '0') + ' Alumnos';
      
      let dateDisplay = '--/--/----';
-     if(c.startDate) {
-        const d = new Date(c.startDate);
-        if(!isNaN(d.getTime())) dateDisplay = d.toLocaleDateString();
-        else dateDisplay = String(c.startDate); 
+     const rawDate = c.startDate || c.globalStartDate || c.periodoFecha;
+     if(rawDate) {
+        const d = parseDate(rawDate);
+        if(d && !isNaN(d.getTime())) dateDisplay = d.toLocaleDateString();
+        else dateDisplay = String(rawDate); 
      }
      document.getElementById('detail-start-date').innerText = dateDisplay;
 
-     setupLink('link-ap', c.links.AP.url, c.links.AP.code);
-     setupLink('link-usmp', c.links.USMP.url, c.links.USMP.code);
+     const linkApUrl = (c.links && c.links.AP && c.links.AP.url) ? c.links.AP.url : (c.aulaVirtualAp || '');
+     const linkApCode = (c.links && c.links.AP && c.links.AP.code) ? c.links.AP.code : '';
+     const linkUsmpUrl = (c.links && c.links.USMP && c.links.USMP.url) ? c.links.USMP.url : (c.aulaVirtualUsmp || '');
+     const linkUsmpCode = (c.links && c.links.USMP && c.links.USMP.code) ? c.links.USMP.code : '';
+
+     setupLink('link-ap', linkApUrl, linkApCode);
+     setupLink('link-usmp', linkUsmpUrl, linkUsmpCode);
      
      // New Unified Tabs
      renderUnifiedTabs();
@@ -1233,8 +1289,9 @@
      const con = document.getElementById('week-status-container');
      con.innerHTML = '';
      
+     const courseStartDate = currentCourse.startDate || currentCourse.globalStartDate || currentCourse.periodoFecha;
      ['S1','S2','S3','S4'].forEach(w => {
-         const stats = getWeekStats(currentCourse.startDate, w, currentCourse.grades);
+         const stats = getWeekStats(courseStartDate, w, currentCourse.grades);
          const weekNum = w.replace('S','');
          const isActive = (currentWeekId === w);
          
@@ -1279,7 +1336,8 @@
   function renderCriteria() {
      const parent = document.getElementById('criteria-container');
      parent.innerHTML = '';
-     const stats = getWeekStats(currentCourse.startDate, currentWeekId, currentCourse.grades);
+     const courseStartDate = currentCourse.startDate || currentCourse.globalStartDate || currentCourse.periodoFecha;
+     const stats = getWeekStats(courseStartDate, currentWeekId, currentCourse.grades);
      const isLocked = (stats.status !== 'OPEN');
 
      if(isLocked) {
@@ -1545,7 +1603,8 @@
            google.script.run.saveGrade(currentCourse.rowIndex, 'total_score', totalScore, currentWeekId, currentModule);
            
            // Recalculate Logic
-           const stats = getWeekStats(currentCourse.startDate, currentWeekId, currentCourse.grades);
+           const courseStartDate = currentCourse.startDate || currentCourse.globalStartDate || currentCourse.periodoFecha;
+           const stats = getWeekStats(courseStartDate, currentWeekId, currentCourse.grades);
            document.getElementById('week-progress-bar').style.width = stats.progress + '%';
            document.getElementById('week-progress-text').innerText = stats.progress + '%';
            

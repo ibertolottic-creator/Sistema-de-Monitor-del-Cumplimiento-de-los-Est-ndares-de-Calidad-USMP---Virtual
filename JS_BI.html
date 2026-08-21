@@ -1,264 +1,493 @@
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <script>
 /**
  * ======================================================================
- * CONTROLADOR FRONTEND - DASHBOARD BI (ANÁLISIS DE DOCENTES)
- * Archivo: JS_BI.html
+ * SUBSISTEMA BI - ANÁLISIS DE RESULTADOS DE DOCENTES (FRONTEND)
+ * ARCHIVO: JS_BI.html
  * ======================================================================
- * Consume: Backend_BI.gs → getSabanaBIData()
- * Props: nombre, asignatura, programa, modalidad, ptsLMS, ptsAcomp,
- *        promedio, scoreGral, criteriosLMS[], criteriosAcomp[]
- * Headers: headerCodesLMS[], headerCodesAcomp[] (a nivel response)
+ * Controlador del Dashboard BI.
+ * - Renderiza 3 Vistas: General, LMS y Acompañamiento.
+ * - KPIs con inline styles para independencia de frameworks CSS.
+ * - Tablas con ranking Top 5 y Bottom 5, y consolidado completo.
+ * - Gráficos Chart.js interactivos (Doughnut, Bar, Radar).
+ * - Filtros por Coordinador, Modalidad y Unidad/Semana.
+ * - Exportación e Impresión PDF en alta resolución con html2pdf.
  */
-var biDataGlobal = [];
+
+// ESTADO GLOBAL DEL MÓDULO BI
+var biRawData = [];
 var biHeadersLMS = [];
 var biTitlesLMS = [];
 var biHeadersAcomp = [];
 var biTitlesAcomp = [];
-var chartDistribucionInstance = null;
-var chartDimensionesInstance = null;
+var currentBiTab = 'GENERAL';
+var biTablaVistaModo = 'COMPLETA'; // 'COMPLETA' | 'RESUMEN'
+var biMostrarPctRev = false; // Alternar entre Notas Vigesimales y % Avance
 
+// Instancias de Chart.js para destrucción y recreación limpia
+var biCharts = {
+  distGral: null,
+  radarLmsGral: null,
+  radarAcompGral: null,
+  distLms: null,
+  radarLms: null,
+  distAcomp: null,
+  radarAcomp: null
+};
+
+// MAPEO DE COLORES INSTITUCIONALES (Semáforo USMP)
 var BI_COLORS = {
-  blue: '#3b82f6', green: '#10b981', cyan: '#06b6d4',
-  yellow: '#f59e0b', red: '#ef4444', gray: '#9ca3af',
-  virtual: '#2563eb', presencial: '#7c3aed'
+  muyBueno: '#10b981', // Verde esmeralda (18-20)
+  bueno: '#3b82f6',    // Azul institucional (14-17)
+  regular: '#f59e0b',  // Ámbar/Naranja (11-13)
+  deficiente: '#ef4444',// Rojo USMP (<11)
+  primary: '#3b82f6',
+  cyan: '#06b6d4',
+  purple: '#8b5cf6',
+  gray: '#94a3b8',
+  bgLight: '#f8fafc',
+  border: '#e2e8f0'
 };
 
-// ---------------------------------------------------------------
-// MAPAS DE DIMENSIONES (índices 0-based dentro del bloque LMS de 38 cols)
-// ---------------------------------------------------------------
-
-var DIMENSIONES_VIRTUAL = {
-  '1': { nombre: 'Preparación', indices: [0,1] },
-  '2': { nombre: 'Sesiones', indices: [2,3,4,5,6,7,8,9,10,11] },
-  '3': { nombre: 'Tutorías', indices: [12,13,14,15] },
-  '4': { nombre: 'Calificación', indices: [20,21,22,23,24,25,26,27] },
-  '5': { nombre: 'Comunicación', indices: [28,29,30,31] },
-  '6': { nombre: 'Retención', indices: [32,33,34,35] },
-  '7': { nombre: 'Cierre', indices: [36,37] }
-};
-
-var DIMENSIONES_PRESENCIAL = {
-  '1': { nombre: 'Preparación', indices: [0,1] },
-  '2': { nombre: 'Sesiones', indices: [2,3,4,5,6,7,8,9,10,11] },
-  '3': { nombre: 'Evaluaciones', indices: [16,17,18] },
-  '4': { nombre: 'Asistencia', indices: [19] },
-  '5': { nombre: 'Calificación', indices: [20,21,22,23,24,25,26,27] },
-  '6': { nombre: 'Comunicación', indices: [28,29,30,31] },
-  '7': { nombre: 'Retención', indices: [32,33,34,35] },
-  '8': { nombre: 'Cierre', indices: [36,37] }
-};
-
-// Dimensiones "unificadas" para cuando el filtro = TODAS
-var DIMENSIONES_TODAS = {
-  '1': { nombre: 'Preparación', indicesV: [0,1], indicesP: [0,1] },
-  '2': { nombre: 'Sesiones', indicesV: [2,3,4,5,6,7,8,9,10,11], indicesP: [2,3,4,5,6,7,8,9,10,11] },
-  '3V': { nombre: 'Tutorías (V)', indicesV: [12,13,14,15], indicesP: [] },
-  '3P': { nombre: 'Evaluaciones (P)', indicesV: [], indicesP: [16,17,18] },
-  '4P': { nombre: 'Asistencia (P)', indicesV: [], indicesP: [19] },
-  '5': { nombre: 'Calificación', indicesV: [20,21,22,23,24,25,26,27], indicesP: [20,21,22,23,24,25,26,27] },
-  '6': { nombre: 'Comunicación', indicesV: [28,29,30,31], indicesP: [28,29,30,31] },
-  '7': { nombre: 'Retención', indicesV: [32,33,34,35], indicesP: [32,33,34,35] },
-  '8': { nombre: 'Cierre', indicesV: [36,37], indicesP: [36,37] }
-};
-
-var DIMENSIONES_ACOMP = {
-  'A': { nombre: 'Inicio', indices: [0,1,2] },
-  'B': { nombre: 'Desarrollo', indices: [3,4,5,6,7,8] },
-  'C': { nombre: 'Cierre', indices: [9,10] }
-};
-
+// MAPEO OFICIAL DE NOMBRES COMPLETOS DE ACOMPAÑAMIENTO (11 EJES)
 var NOMBRES_COMPLETOS_ACOMP = [
-  '1. Objetivos y contenidos de aprendizaje',
-  '2. Recuperación de saberes previos y motivación',
-  '3. Conflicto cognitivo',
-  '4. Desarrollo del contenido educativo',
-  '5. Aplicación del contenido',
-  '6. Estrategias didácticas',
-  '7. Recursos didácticos',
-  '8. Comunicación pedagógica',
-  '9. Desarrollo de capacidades cognitivas',
-  '10. Evaluación de logros de aprendizaje y reforzamiento',
-  '11. Extensión'
+  "1. Orientación y propósito de la sesión",
+  "2. Saberes previos y motivación",
+  "3. Conflicto cognitivo",
+  "4. Dominio del contenido y secuencialidad",
+  "5. Aplicación práctica / transferencia",
+  "6. Estrategias metodológicas activas",
+  "7. Recursos y materiales didácticos",
+  "8. Comunicación asertiva y empatía",
+  "9. Desarrollo de capacidades cognitivas",
+  "10. Evaluación formativa y retroalimentación",
+  "11. Extensión del aprendizaje y cierre"
 ];
+
+// Fallback universal para alertas/toasts
+window.showToast = window.showToast || function(title, msg, type) {
+  var toast = document.getElementById('global-toast');
+  var tTitle = document.getElementById('global-toast-title');
+  var tMsg = document.getElementById('global-toast-msg');
+  var tIcon = document.getElementById('global-toast-icon');
+  if (toast && tTitle && tMsg) {
+    tTitle.innerText = title || '';
+    tMsg.innerText = msg || '';
+    if (type === 'error') {
+      if (tIcon) tIcon.className = 'fa-solid fa-circle-exclamation text-red-500 text-lg';
+    } else if (type === 'info') {
+      if (tIcon) tIcon.className = 'fa-solid fa-circle-info text-blue-500 text-lg';
+    } else {
+      if (tIcon) tIcon.className = 'fa-solid fa-circle-check text-green-500 text-lg';
+    }
+    toast.classList.remove('hidden');
+    setTimeout(function() { toast.classList.add('hidden'); }, 4000);
+  } else {
+    alert((title ? title + ': ' : '') + msg);
+  }
+};
 
 /** Punto de entrada: llamado desde loadModule('BI') en JS_Client */
 function mostrarModuloBI() {
   // Ocultar TODAS las vistas principales
-  var ids = ['home-view','module-view','module-acomp','assignment-view','resultados-view'];
+  var ids = ['home-view','module-view','module-acomp','assignment-view','resultados-view','coordinadores-view'];
   for (var i = 0; i < ids.length; i++) {
     var el = document.getElementById(ids[i]);
-    if (el) { el.style.display = 'none'; }
+    if (el) { 
+      el.classList.add('hidden');
+      el.style.display = 'none'; 
+    }
   }
+
   // Mostrar Dashboard BI
   var biView = document.getElementById('module-dashboard-bi');
-  if (biView) { biView.style.display = 'flex'; }
-  // Cargar datos si es la primera vez
-  if (biDataGlobal.length === 0) { cargarDataSabanaBI(); }
+  if (biView) { 
+    biView.classList.remove('hidden');
+    biView.style.display = 'flex'; 
+  }
+
+  // Cargar datos si aún no se han traído
+  if (!biRawData || biRawData.length === 0) {
+    cargarDataSabanaBI();
+  } else {
+    renderBiDashboard();
+  }
 }
 
-/** Llama al backend */
+/** Carga de datos desde Backend_BI.gs */
 function cargarDataSabanaBI() {
   var loader = document.getElementById('bi-loader');
   var content = document.getElementById('bi-content');
   var btn = document.getElementById('btnRecargarBI');
 
-  loader.style.display = 'flex';
-  content.style.display = 'none';
-  btn.disabled = true;
-  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Cargando...';
+  if (loader) loader.style.display = 'flex';
+  if (content) content.style.display = 'none';
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Cargando...'; }
 
   google.script.run
-    .withSuccessHandler(function(res) {
-      btn.disabled = false;
-      btn.innerHTML = '<i class="fa-solid fa-sync-alt"></i> Actualizar Sábana';
+    .withSuccessHandler(function(response) {
+      if (loader) loader.style.display = 'none';
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-sync-alt"></i> Actualizar Sábana'; }
 
-      if (res.role === 'ERROR') {
-        loader.innerHTML = '<div style="text-align:center;"><i class="fa-solid fa-triangle-exclamation" style="font-size:36px;color:#f87171;margin-bottom:12px;display:block;"></i><p style="color:#ef4444;font-weight:700;font-size:14px;">' + res.message + '</p><button onclick="cargarDataSabanaBI()" style="margin-top:12px;padding:8px 16px;background:#3b82f6;color:#fff;border:none;border-radius:8px;font-size:13px;cursor:pointer;font-weight:700;">Reintentar</button></div>';
+      if (!response || response.role === 'ERROR') {
+        window.showToast('Error BI', (response ? response.message : 'Respuesta vacía del servidor'), 'error');
         return;
       }
 
-      biDataGlobal = res.biData || [];
-      biHeadersLMS = res.headerCodesLMS || [];
-      biTitlesLMS = res.headerTitlesLMS || [];
-      biHeadersAcomp = res.headerCodesAcomp || [];
-      biTitlesAcomp = res.headerTitlesAcomp || [];
-      
-      popularFiltrosBI(biDataGlobal);
-      
-      renderBiDashboard();
+      biRawData = response.biData || [];
+      biHeadersLMS = response.headerCodesLMS || [];
+      biTitlesLMS = response.headerTitlesLMS || [];
+      biHeadersAcomp = response.headerCodesAcomp || [];
+      biTitlesAcomp = response.headerTitlesAcomp || [];
 
-      loader.style.display = 'none';
-      content.style.display = 'block';
+      popularFiltrosBI();
+
+      if (content) content.style.display = 'flex';
+      renderBiDashboard();
     })
     .withFailureHandler(function(err) {
-      btn.disabled = false;
-      btn.innerHTML = '<i class="fa-solid fa-sync-alt"></i> Actualizar Sábana';
-      loader.innerHTML = '<div style="text-align:center;"><i class="fa-solid fa-plug-circle-xmark" style="font-size:36px;color:#f87171;margin-bottom:12px;display:block;"></i><p style="color:#ef4444;font-weight:700;font-size:14px;">Error de conexión: ' + (err.message || err) + '</p></div>';
+      if (loader) loader.style.display = 'none';
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-sync-alt"></i> Actualizar Sábana'; }
+      window.showToast('Error de Conexión', 'No se pudo leer la Sábana: ' + err, 'error');
     })
     .getSabanaBIData();
 }
 
-/** Puebla los menus de filtros dinamicos (con lógica en cascada) */
-function popularFiltrosBI(data) {
-  var selectProg = document.getElementById('filtroBiPrograma');
-  var selectCoord = document.getElementById('filtroBiCoordinador');
-  
-  if (!selectProg || !selectCoord) return;
-  
-  var valProg = selectProg.value;
-  var valCoord = selectCoord.value;
-  
-  // Coordinadores
-  var coordinadores = {};
-  for(var i=0; i<data.length; i++) {
-     if(data[i].coordinador) coordinadores[data[i].coordinador] = true;
-  }
-  var coordArr = Object.keys(coordinadores).sort();
-  var htmlCoord = '<option value="TODOS">Todos los Coordinadores</option>';
-  for(var i=0; i<coordArr.length; i++) {
-     htmlCoord += '<option value="'+coordArr[i]+'">'+coordArr[i]+'</option>';
-  }
-  selectCoord.innerHTML = htmlCoord;
-  if(valCoord && valCoord !== 'TODOS' && coordinadores[valCoord]) {
-    selectCoord.value = valCoord;
-  } else {
-    valCoord = 'TODOS';
+/** Llena los dropdowns de Filtro de Programas y Coordinadores */
+function popularFiltrosBI() {
+  var selProg = document.getElementById('filtroBiPrograma');
+  var selCoord = document.getElementById('filtroBiCoordinador');
+
+  if (selProg) {
+    var valActual = selProg.value;
+    selProg.innerHTML = '<option value="TODOS">Todos los Programas</option>';
+    var progs = {};
+    for (var i = 0; i < biRawData.length; i++) {
+      var p = biRawData[i].programa;
+      if (p && p.trim() !== '') progs[p.trim()] = true;
+    }
+    var listaProgs = Object.keys(progs).sort();
+    for (var j = 0; j < listaProgs.length; j++) {
+      var opt = document.createElement('option');
+      opt.value = listaProgs[j];
+      opt.innerText = listaProgs[j];
+      if (listaProgs[j] === valActual) opt.selected = true;
+      selProg.appendChild(opt);
+    }
   }
 
-  // Programas (Filtrados por coordinador)
-  var dataProg = data;
-  if (valCoord !== 'TODOS') {
-    dataProg = data.filter(function(d) { return d.coordinador === valCoord; });
-  }
-  
-  var programas = {};
-  for(var i=0; i<dataProg.length; i++) {
-     if(dataProg[i].programa) programas[dataProg[i].programa] = true;
-  }
-  var progArr = Object.keys(programas).sort();
-  var htmlProg = '<option value="TODOS">Todos los Programas</option>';
-  for(var i=0; i<progArr.length; i++) {
-     htmlProg += '<option value="'+progArr[i]+'">'+progArr[i]+'</option>';
-  }
-  selectProg.innerHTML = htmlProg;
-  
-  if(valProg && valProg !== 'TODOS' && programas[valProg]) {
-    selectProg.value = valProg;
-  } else {
-    selectProg.value = 'TODOS';
+  if (selCoord) {
+    var valActualCoord = selCoord.value;
+    selCoord.innerHTML = '<option value="TODOS">Todos los Coordinadores</option>';
+    var coords = {};
+    for (var i = 0; i < biRawData.length; i++) {
+      var c = biRawData[i].coordinador;
+      if (c && c.trim() !== '') coords[c.trim()] = true;
+    }
+    var listaCoords = Object.keys(coords).sort();
+    for (var k = 0; k < listaCoords.length; k++) {
+      var optC = document.createElement('option');
+      optC.value = listaCoords[k];
+      optC.innerText = listaCoords[k];
+      if (listaCoords[k] === valActualCoord) optC.selected = true;
+      selCoord.appendChild(optC);
+    }
   }
 }
 
-/** Manejador de cambio del filtro de Coordinador para la cascada */
+/** Cambio en Coordinador: actualiza Programas dependientes */
 function onChangeFiltroCoordinadorBI() {
-  popularFiltrosBI(biDataGlobal);
-  renderBiDashboard();
-}
+  var selCoord = document.getElementById('filtroBiCoordinador');
+  var selProg = document.getElementById('filtroBiPrograma');
+  var coordElegido = selCoord ? selCoord.value : 'TODOS';
 
-var currentBiTab = 'GENERAL';
-var biChartInstances = {};
-
-function switchBiTab(tab) {
-  currentBiTab = tab;
-  var tags = ['general', 'lms', 'acomp'];
-  for(var i=0; i<tags.length; i++) {
-    var isA = (tab === tags[i].toUpperCase());
-    var btn = document.getElementById('bi-tab-btn-' + tags[i]);
-    var v = document.getElementById('bi-view-' + tags[i]);
-    if(btn) {
-      if(isA) {
-        btn.style.color = '#3b82f6'; btn.style.borderBottomColor = '#3b82f6'; btn.style.fontWeight = '700';
-      } else {
-        btn.style.color = '#64748b'; btn.style.borderBottomColor = 'transparent'; btn.style.fontWeight = '600';
+  if (selProg) {
+    selProg.innerHTML = '<option value="TODOS">Todos los Programas</option>';
+    var progs = {};
+    for (var i = 0; i < biRawData.length; i++) {
+      var row = biRawData[i];
+      if (coordElegido === 'TODOS' || row.coordinador === coordElegido) {
+        var p = row.programa;
+        if (p && p.trim() !== '') progs[p.trim()] = true;
       }
     }
-    if(v) v.style.display = isA ? 'block' : 'none';
+    var listaProgs = Object.keys(progs).sort();
+    for (var j = 0; j < listaProgs.length; j++) {
+      var opt = document.createElement('option');
+      opt.value = listaProgs[j];
+      opt.innerText = listaProgs[j];
+      selProg.appendChild(opt);
+    }
   }
   renderBiDashboard();
 }
 
-function renderBiDashboard() {
-  if (!biDataGlobal || biDataGlobal.length === 0) {
-    var els = ['docentes', 'vigesimal', 'lms', 'acomp'];
-    for(var i=0; i<els.length; i++) {
-      var kpi = document.getElementById('kpi-bi-' + els[i]);
-      if (kpi) kpi.textContent = els[i] === 'docentes' ? '0' : '-';
+/** Cambio de Tabs en la Vista BI */
+function switchBiTab(tabKey) {
+  currentBiTab = tabKey;
+  var tabs = ['general', 'lms', 'acomp'];
+  for (var i = 0; i < tabs.length; i++) {
+    var k = tabs[i];
+    var btn = document.getElementById('bi-tab-btn-' + k);
+    var view = document.getElementById('bi-view-' + k);
+    if (k === tabKey.toLowerCase()) {
+      if (btn) {
+        btn.style.color = '#3b82f6';
+        btn.style.borderBottomColor = '#3b82f6';
+        btn.style.fontWeight = '700';
+      }
+      if (view) view.style.display = 'block';
+    } else {
+      if (btn) {
+        btn.style.color = '#64748b';
+        btn.style.borderBottomColor = 'transparent';
+        btn.style.fontWeight = '600';
+      }
+      if (view) view.style.display = 'none';
     }
-    return;
   }
-
-  var filtroMod = document.getElementById('filtroBiModalidad').value;
-  var elProg = document.getElementById('filtroBiPrograma');
-  var elCoord = document.getElementById('filtroBiCoordinador');
-  var filtroProg = elProg ? elProg.value : 'TODOS';
-  var filtroCoord = elCoord ? elCoord.value : 'TODOS';
-
-  var dataFiltrada = biDataGlobal;
-  
-  if (filtroMod === 'VIRTUAL_HIBRIDO') dataFiltrada = dataFiltrada.filter(function(d) { return d.modalidad !== 'PRESENCIAL'; });
-  else if (filtroMod === 'PRESENCIAL') dataFiltrada = dataFiltrada.filter(function(d) { return d.modalidad === 'PRESENCIAL'; });
-  
-  if (filtroProg !== 'TODOS') dataFiltrada = dataFiltrada.filter(function(d) { return d.programa === filtroProg; });
-  if (filtroCoord !== 'TODOS') dataFiltrada = dataFiltrada.filter(function(d) { return d.coordinador === filtroCoord; });
-
-  if (currentBiTab === 'GENERAL') renderBiViewGeneral(dataFiltrada, filtroMod);
-  else if (currentBiTab === 'LMS') renderBiViewLms(dataFiltrada, filtroMod);
-  else if (currentBiTab === 'ACOMP') renderBiViewAcomp(dataFiltrada, filtroMod);
+  renderBiDashboard();
 }
 
-// ---------------------------------------------------------------
-// AUXILIARES
-// ---------------------------------------------------------------
+/** Render Principal del Dashboard según filtros */
+function renderBiDashboard() {
+  if (!biRawData || biRawData.length === 0) return;
+
+  var elMod = document.getElementById('filtroBiModalidad');
+  var elProg = document.getElementById('filtroBiPrograma');
+  var elCoord = document.getElementById('filtroBiCoordinador');
+  var elUnidad = document.getElementById('filtroBiUnidad');
+
+  var filtroMod = elMod ? elMod.value : 'TODAS';
+  var filtroProg = elProg ? elProg.value : 'TODOS';
+  var filtroCoord = elCoord ? elCoord.value : 'TODOS';
+  var filtroUnidad = elUnidad ? elUnidad.value : 'TODAS';
+
+  var dataFiltrada = biRawData.filter(function(row) {
+    if (filtroProg !== 'TODOS' && row.programa !== filtroProg) return false;
+    if (filtroCoord !== 'TODOS' && row.coordinador !== filtroCoord) return false;
+    if (filtroMod === 'VIRTUAL_HIBRIDO' && row.modalidad !== 'VIRTUAL') return false;
+    if (filtroMod === 'PRESENCIAL' && row.modalidad !== 'PRESENCIAL') return false;
+    return true;
+  });
+
+  if (currentBiTab === 'GENERAL') renderBiViewGeneral(dataFiltrada, filtroMod, filtroUnidad);
+  else if (currentBiTab === 'LMS') renderBiViewLms(dataFiltrada, filtroMod, filtroUnidad);
+  else if (currentBiTab === 'ACOMP') renderBiViewAcomp(dataFiltrada, filtroMod, filtroUnidad);
+}
+
+// AUXILIARES DE UNIDAD / SEMANA
+function isIndexInUnidad(idx, filtroUnidad, isAcomp) {
+  if (!filtroUnidad || filtroUnidad === 'TODAS') return true;
+  
+  if (!isAcomp) {
+    // LMS Criterios (38 cols)
+    var code = (biHeadersLMS[idx] || '').toLowerCase();
+    if (!code) return false;
+    
+    var codeUnit = '';
+    if (code.indexOf('_pre') !== -1 || code.indexOf('_b') !== -1 || code.indexOf('_bien') !== -1 || code.indexOf('_s1') !== -1) {
+      codeUnit = 'U1';
+    } else if (code.indexOf('_s2') !== -1) {
+      codeUnit = 'U2';
+    } else if (code.indexOf('_s3') !== -1) {
+      codeUnit = 'U3';
+    } else if (code.indexOf('_s4') !== -1 || code.indexOf('_cier') !== -1 || code.indexOf('_cierre') !== -1) {
+      codeUnit = 'U4';
+    } else {
+      var indexToUnitMap = {
+        0: 'U1', 1: 'U1', 2: 'U1', 3: 'U1',
+        4: 'U2',
+        5: 'U3',
+        6: 'U4',
+        7: 'U1', 8: 'U1',
+        9: 'U2',
+        10: 'U3',
+        11: 'U4',
+        12: 'U1', 13: 'U2', 14: 'U3', 15: 'U4',
+        16: 'U1', 17: 'U2', 18: 'U4', 19: 'U4',
+        20: 'U1', 21: 'U2', 22: 'U3', 23: 'U4',
+        24: 'U1', 25: 'U2', 26: 'U3', 27: 'U4',
+        28: 'U1', 29: 'U2', 30: 'U3', 31: 'U4',
+        32: 'U1', 33: 'U2', 34: 'U3', 35: 'U4',
+        36: 'U4', 37: 'U4'
+      };
+      codeUnit = indexToUnitMap[idx] || 'U1';
+    }
+    
+    return codeUnit === filtroUnidad;
+  } else {
+    // Acompañamiento Criterios (11 cols)
+    if (filtroUnidad === 'U1') return (idx >= 0 && idx <= 2);
+    if (filtroUnidad === 'U2') return (idx >= 3 && idx <= 5);
+    if (filtroUnidad === 'U3') return (idx >= 6 && idx <= 8);
+    if (filtroUnidad === 'U4') return (idx >= 9 && idx <= 10);
+    return true;
+  }
+}
+
+function calcularPuntajeVigesimalCurso(doc, tipo, filtroUnidad) {
+  if (tipo === 'GENERAL') {
+    var sL = calcularPuntajeVigesimalCurso(doc, 'LMS', filtroUnidad);
+    var sA = calcularPuntajeVigesimalCurso(doc, 'ACOMP', filtroUnidad);
+    
+    if (filtroUnidad && filtroUnidad !== 'TODAS' && sL === null) {
+      return null;
+    }
+    
+    if (sL !== null && sA !== null) return parseFloat(((sL + sA) / 2).toFixed(2));
+    if (sL !== null) return sL;
+    if (sA !== null) return sA;
+    return null;
+  }
+
+  if (!filtroUnidad || filtroUnidad === 'TODAS') {
+    var score = tipo === 'LMS' ? doc.ptsLMS : doc.ptsAcomp;
+    return (score !== null && score !== undefined && !isNaN(score) && score > 0) ? parseFloat(Number(score).toFixed(2)) : null;
+  }
+  
+  var isAcomp = (tipo === 'ACOMP');
+  var arr = isAcomp ? doc.criteriosAcomp : doc.criteriosLMS;
+  if (!arr || arr.length === 0) return null;
+  
+  var suma = 0, count = 0;
+  for (var i = 0; i < arr.length; i++) {
+    if (!isAcomp) {
+      if (doc.modalidad === 'PRESENCIAL') {
+        if ([12, 13, 14, 15].indexOf(i) !== -1) continue;
+      } else {
+        if ([16, 17, 18, 19].indexOf(i) !== -1) continue;
+      }
+    }
+    if (!isIndexInUnidad(i, filtroUnidad, isAcomp)) continue;
+    var val = arr[i];
+    if (val !== null && val !== undefined && val !== '' && !isNaN(val) && Number(val) > 0) {
+      suma += Number(val);
+      count++;
+    }
+  }
+  
+  if (count === 0) return null;
+  var vig = (suma / (count * 4)) * 20;
+  return parseFloat(vig.toFixed(2));
+}
+
+function calcularStatsRevision(doc, tipo, filtroUnidad) {
+  if (tipo === 'GENERAL') {
+    var stL = calcularStatsRevision(doc, 'LMS', filtroUnidad);
+    var stA = calcularStatsRevision(doc, 'ACOMP', filtroUnidad);
+    
+    if (filtroUnidad && filtroUnidad !== 'TODAS' && stL.revisados === 0) {
+      return { total: stL.total + stA.total, revisados: 0, porcentaje: 0 };
+    }
+    
+    var tot = stL.total + stA.total;
+    var rev = stL.revisados + stA.revisados;
+    var pct = tot > 0 ? Math.round((rev / tot) * 100) : 0;
+    return { total: tot, revisados: rev, porcentaje: pct };
+  }
+
+  var isAcomp = (tipo === 'ACOMP');
+  var arr = isAcomp ? doc.criteriosAcomp : doc.criteriosLMS;
+  if (!arr || arr.length === 0) return { total: 0, revisados: 0, porcentaje: 0 };
+  
+  var total = 0, revisados = 0;
+  for (var i = 0; i < arr.length; i++) {
+    if (!isAcomp) {
+      if (doc.modalidad === 'PRESENCIAL') {
+        if ([12, 13, 14, 15].indexOf(i) !== -1) continue;
+      } else {
+        if ([16, 17, 18, 19].indexOf(i) !== -1) continue;
+      }
+    }
+    if (!isIndexInUnidad(i, filtroUnidad, isAcomp)) continue;
+    
+    total++;
+    var val = arr[i];
+    if (val !== null && val !== undefined && val !== '' && !isNaN(val) && Number(val) > 0) {
+      revisados++;
+    }
+  }
+  
+  var pct = total > 0 ? Math.round((revisados / total) * 100) : 0;
+  return { total: total, revisados: revisados, porcentaje: pct };
+}
+
+function getBadgeRevisionHTML(stats) {
+  var pct = stats.porcentaje;
+  var colorBg = '#f1f5f9', colorText = '#475569', icon = 'fa-clock';
+  if (pct === 100) { colorBg = '#dcfce7'; colorText = '#15803d'; icon = 'fa-check-circle'; }
+  else if (pct > 0) { colorBg = '#fef3c7'; colorText = '#b45309'; icon = 'fa-spinner fa-spin'; }
+  
+  return '<span style="display:inline-flex; align-items:center; gap:4px; font-size:10px; font-weight:700; padding:2px 6px; border-radius:12px; background:' + colorBg + '; color:' + colorText + ';" title="' + stats.revisados + ' de ' + stats.total + ' criterios revisados">' +
+         '<i class="fa-solid ' + icon + '" style="font-size:9px;"></i> ' + pct + '% rev.</span>';
+}
+
+function setBiTablaVistaModo(modo) {
+  biTablaVistaModo = modo;
+  renderBiDashboard();
+}
+
+function toggleBiMostrarPctRev() {
+  biMostrarPctRev = !biMostrarPctRev;
+  renderBiDashboard();
+}
+
+function toggleBiLeyendaCol(mode) {
+  var wVirt = document.getElementById('wrapper-leyenda-virtual');
+  var wPres = document.getElementById('wrapper-leyenda-presencial');
+  var grid = document.getElementById('bi-grid-leyendas');
+  var bAmbas = document.getElementById('btn-leyenda-ambas');
+  var bVirt = document.getElementById('btn-leyenda-virtual');
+  var bPres = document.getElementById('btn-leyenda-presencial');
+
+  if (!wVirt || !wPres || !grid) return;
+
+  if (mode === 'VIRTUAL') {
+    wVirt.style.display = 'block';
+    wPres.style.display = 'none';
+    grid.style.gridTemplateColumns = '1fr';
+    setBtnStyle(bVirt, true, '#2563eb');
+    setBtnStyle(bPres, false, '#7c3aed');
+    setBtnStyle(bAmbas, false, '#06b6d4');
+  } else if (mode === 'PRESENCIAL') {
+    wVirt.style.display = 'none';
+    wPres.style.display = 'block';
+    grid.style.gridTemplateColumns = '1fr';
+    setBtnStyle(bVirt, false, '#2563eb');
+    setBtnStyle(bPres, true, '#7c3aed');
+    setBtnStyle(bAmbas, false, '#06b6d4');
+  } else {
+    wVirt.style.display = 'block';
+    wPres.style.display = 'block';
+    grid.style.gridTemplateColumns = '1fr 1fr';
+    setBtnStyle(bVirt, false, '#2563eb');
+    setBtnStyle(bPres, false, '#7c3aed');
+    setBtnStyle(bAmbas, true, '#06b6d4');
+  }
+}
+
+function setBtnStyle(btn, active, activeColor) {
+  if (!btn) return;
+  if (active) {
+    btn.style.background = activeColor;
+    btn.style.color = '#fff';
+    btn.style.borderColor = activeColor;
+  } else {
+    btn.style.background = '#f8fafc';
+    btn.style.color = '#64748b';
+    btn.style.borderColor = '#cbd5e1';
+  }
+}
+
 function calcularPromedioDimension(dataFiltrada, indices, campoArray) {
   var suma = 0, count = 0;
   for (var i = 0; i < dataFiltrada.length; i++) {
     var arr = dataFiltrada[i][campoArray];
     if (!arr) continue;
     for (var j = 0; j < indices.length; j++) {
-      var idx = indices[j];
-      if (idx < arr.length && arr[idx] !== null && arr[idx] !== undefined) {
-        suma += arr[idx];
+      var val = arr[indices[j]];
+      if (val !== null && val !== undefined && val !== '' && !isNaN(val) && Number(val) > 0) {
+        suma += Number(val);
         count++;
       }
     }
@@ -266,603 +495,1062 @@ function calcularPromedioDimension(dataFiltrada, indices, campoArray) {
   return count > 0 ? parseFloat((suma / count).toFixed(2)) : 0;
 }
 
-function createOrUpdateBiChart(chartId, type, labels, data, colors) {
-  var canvas = document.getElementById(chartId);
-  if(!canvas) return;
-  if(biChartInstances[chartId]) { biChartInstances[chartId].destroy(); }
-  
-  var ds = { data: data };
-  if(type === 'doughnut') {
-    ds.backgroundColor = colors;
-    ds.borderWidth = 2; ds.hoverBorderColor = '#fff';
-  } else if(type === 'radar') {
-    ds.label = 'Promedio (1-4)';
-    ds.backgroundColor = colors.bg;
-    ds.borderColor = colors.border;
-    ds.borderWidth = 2.5; ds.pointBackgroundColor = colors.border;
-    ds.pointBorderColor = '#fff'; ds.pointBorderWidth = 2; ds.pointRadius = 5; ds.pointHoverRadius = 7;
+function createOrUpdateBiChart(chartKey, canvasId, config) {
+  if (biCharts[chartKey]) {
+    biCharts[chartKey].destroy();
   }
-  
-  var defaultOptions = {
-    responsive: true, maintainAspectRatio: false,
-    plugins: { legend: { display: type==='doughnut', position:'right', labels:{usePointStyle:true, padding:15, font:{size:11, family:'Inter, sans-serif'}} }, tooltip: { backgroundColor: '#1e293b', padding:12, cornerRadius:8 } }
-  };
-  
-  if(type === 'radar') {
-    defaultOptions.plugins.legend.display = false;
-    defaultOptions.scales = { r: { min:0, max:4, ticks: {stepSize:1, backdropColor:'transparent', color:'#94a3b8', font:{size:10, family:'Inter'}}, grid:{color:'#e2e8f0'}, angleLines:{color:'#e2e8f0'}, pointLabels:{font:{size:10, family:'Inter', weight:'600'}, color:'#475569'} } };
-    defaultOptions.plugins.tooltip.callbacks = { label: function(ctx){ return ' Promedio: '+ctx.raw+' / 4'; } };
-  }
-  if(type === 'doughnut') {
-    defaultOptions.cutout = '65%';
-  }
-  
-  biChartInstances[chartId] = new Chart(canvas, { type: type, data: { labels: labels, datasets: [ds] }, options: defaultOptions });
+  var canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  biCharts[chartKey] = new Chart(canvas.getContext('2d'), config);
 }
 
-// ---------------------------------------------------------------
-// VISTA 1: GENERAL
-// ---------------------------------------------------------------
-function renderBiViewGeneral(dataFiltrada, modalidad) {
-  var sumProm=0, sumLMS=0, sumAcomp=0;
-  var cntProm=0, cntLMS=0, cntAcomp=0;
-  var distNiveles = { 'Muy Bueno (17-20)':0, 'Bueno (14-16)':0, 'Regular (11-13)':0, 'Deficiente (≤10)':0 };
+/** VISTA 1: RESULTADOS GENERALES */
+function renderBiViewGeneral(data, filtroMod, filtroUnidad) {
+  var total = data.length;
+  var sumGral = 0, countGral = 0;
+  var sumLms = 0, countLms = 0;
+  var sumAcomp = 0, countAcomp = 0;
 
-  for (var i = 0; i < dataFiltrada.length; i++) {
-    var doc = dataFiltrada[i];
-    if (doc.promedio > 0) { sumProm += doc.promedio; cntProm++; }
-    if (doc.ptsLMS > 0)   { sumLMS += doc.ptsLMS; cntLMS++; }
-    if (doc.ptsAcomp > 0) { sumAcomp += doc.ptsAcomp; cntAcomp++; }
-    if (doc.promedio > 0) {
-      if (doc.promedio >= 17) distNiveles['Muy Bueno (17-20)']++;
-      else if (doc.promedio >= 14) distNiveles['Bueno (14-16)']++;
-      else if (doc.promedio >= 11) distNiveles['Regular (11-13)']++;
-      else distNiveles['Deficiente (≤10)']++;
+  var dist = { muyBueno: 0, bueno: 0, regular: 0, deficiente: 0, sinEvaluar: 0 };
+
+  for (var i = 0; i < total; i++) {
+    var row = data[i];
+    var prom = calcularPuntajeVigesimalCurso(row, 'GENERAL', filtroUnidad);
+    var pL = calcularPuntajeVigesimalCurso(row, 'LMS', filtroUnidad);
+    var pA = calcularPuntajeVigesimalCurso(row, 'ACOMP', filtroUnidad);
+
+    if (prom !== null && prom > 0) {
+      sumGral += prom; countGral++;
+      if (prom >= 18) dist.muyBueno++;
+      else if (prom >= 14) dist.bueno++;
+      else if (prom >= 11) dist.regular++;
+      else dist.deficiente++;
+    } else {
+      dist.sinEvaluar++;
     }
+
+    if (pL !== null && pL > 0) { sumLms += pL; countLms++; }
+    if (pA !== null && pA > 0) { sumAcomp += pA; countAcomp++; }
   }
 
-  // KPIs
-  var kpiD = document.getElementById('bi-kpis-general');
-  if(kpiD) {
-    kpiD.innerHTML = '<div style="background:#fff; padding:20px; border-radius:12px; border:1px solid #e2e8f0; border-left:5px solid #3b82f6;"><p style="margin:0 0 4px; font-size:11px; font-weight:700; color:#3b82f6; text-transform:uppercase;">Asignaturas Evaluadas</p><p style="margin:0; font-size:28px; font-weight:800; color:#1e293b;">'+dataFiltrada.length+'</p></div>' +
-                     '<div style="background:#fff; padding:20px; border-radius:12px; border:1px solid #e2e8f0; border-left:5px solid #10b981;"><p style="margin:0 0 4px; font-size:11px; font-weight:700; color:#10b981; text-transform:uppercase;">Promedio General</p><p style="margin:0; font-size:28px; font-weight:800; color:#1e293b;">'+(cntProm>0 ? (sumProm/cntProm).toFixed(2) : '-')+'</p></div>' +
-                     '<div style="background:#fff; padding:20px; border-radius:12px; border:1px solid #e2e8f0; border-left:5px solid #06b6d4;"><p style="margin:0 0 4px; font-size:11px; font-weight:700; color:#06b6d4; text-transform:uppercase;">Promedio LMS</p><p style="margin:0; font-size:28px; font-weight:800; color:#1e293b;">'+(cntLMS>0 ? (sumLMS/cntLMS).toFixed(2) : '-')+'</p></div>' +
-                     '<div style="background:#fff; padding:20px; border-radius:12px; border:1px solid #e2e8f0; border-left:5px solid #f59e0b;"><p style="margin:0 0 4px; font-size:11px; font-weight:700; color:#f59e0b; text-transform:uppercase;">Promedio Acompañamiento</p><p style="margin:0; font-size:28px; font-weight:800; color:#1e293b;">'+(cntAcomp>0 ? (sumAcomp/cntAcomp).toFixed(2) : '-')+'</p></div>';
+  var avgGral = countGral > 0 ? (sumGral / countGral).toFixed(2) : '-';
+  var avgLms = countLms > 0 ? (sumLms / countLms).toFixed(2) : '-';
+  var avgAcomp = countAcomp > 0 ? (sumAcomp / countAcomp).toFixed(2) : '-';
+
+  // 1. KPI Cards
+  var kpisEl = document.getElementById('bi-kpis-general');
+  if (kpisEl) {
+    kpisEl.innerHTML = 
+      buildKpiCard('Total Evaluados', countGral + ' <span style="font-size:13px; font-weight:600; color:#64748b;">/ ' + total + '</span>', 'fa-users', '#3b82f6') +
+      buildKpiCard('Promedio General', avgGral, 'fa-star', '#10b981', '/20') +
+      buildKpiCard('Promedio LMS', avgLms, 'fa-laptop', '#06b6d4', '/20') +
+      buildKpiCard('Promedio Acompañamiento', avgAcomp, 'fa-chalkboard-user', '#f59e0b', '/20');
   }
 
-  // Dist Gral
-  createOrUpdateBiChart('chartBiDistGral', 'doughnut', Object.keys(distNiveles), Object.values(distNiveles), [BI_COLORS.green, BI_COLORS.blue, BI_COLORS.yellow, BI_COLORS.red]);
+  // 2. Gráficos
+  createOrUpdateBiChart('distGral', 'chartBiDistGral', {
+    type: 'doughnut',
+    data: {
+      labels: ['Muy Bueno (18-20)', 'Bueno (14-17)', 'Regular (11-13)', 'Deficiente (<11)', 'Sin Evaluar'],
+      datasets: [{
+        data: [dist.muyBueno, dist.bueno, dist.regular, dist.deficiente, dist.sinEvaluar],
+        backgroundColor: [BI_COLORS.muyBueno, BI_COLORS.bueno, BI_COLORS.regular, BI_COLORS.deficiente, BI_COLORS.gray]
+      }]
+    },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
+  });
 
-  // Radar LMS Gral
-  var lmsLabels=[], lmsProms=[];
-  var dimKeysLMS = modalidad === 'PRESENCIAL' ? Object.keys(DIMENSIONES_PRESENCIAL) : (modalidad === 'VIRTUAL_HIBRIDO' ? Object.keys(DIMENSIONES_VIRTUAL) : Object.keys(DIMENSIONES_TODAS));
-  var dimsMapLMS = modalidad === 'PRESENCIAL' ? DIMENSIONES_PRESENCIAL : (modalidad === 'VIRTUAL_HIBRIDO' ? DIMENSIONES_VIRTUAL : DIMENSIONES_TODAS);
-  for(var k=0; k<dimKeysLMS.length; k++) {
-    var dim = dimsMapLMS[dimKeysLMS[k]];
-    lmsLabels.push(dim.nombre);
-    if(modalidad === 'TODAS') {
-      var dV = dataFiltrada.filter(function(d){return d.modalidad !== 'PRESENCIAL';});
-      var dP = dataFiltrada.filter(function(d){return d.modalidad === 'PRESENCIAL';});
-      var sTotal=0, cTotal=0;
-      if(dim.indicesV && dim.indicesV.length>0) {
-        for(var x=0; x<dV.length; x++){
-          if(!dV[x].criteriosLMS) continue;
-          for(var y=0; y<dim.indicesV.length; y++){
-            var val = dV[x].criteriosLMS[dim.indicesV[y]];
-            if(val) { sTotal+=val; cTotal++; }
+  var dimsLmsGral = [
+    { label: '1. Org. y Gestión', idx: [0, 1] },
+    { label: '2. Sesiones', idx: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11] },
+    { label: '3. Exclusivos', idx: (filtroMod === 'PRESENCIAL' ? [16, 17, 18, 19] : [12, 13, 14, 15]) },
+    { label: '4. Calificación', idx: [20, 21, 22, 23, 24, 25, 26, 27] },
+    { label: '5. Comunicación', idx: [28, 29, 30, 31] },
+    { label: '6. Riesgo Acad.', idx: [32, 33, 34, 35] },
+    { label: '7. Cierre', idx: [36, 37] }
+  ];
+  var lmsValsGral = dimsLmsGral.map(function(d) { return calcularPromedioDimension(data, d.idx, 'criteriosLMS'); });
+
+  createOrUpdateBiChart('radarLmsGral', 'chartBiRadarLmsGral', {
+    type: 'radar',
+    data: {
+      labels: dimsLmsGral.map(function(d) { return d.label; }),
+      datasets: [{
+        label: 'Promedio LMS (1-4)',
+        data: lmsValsGral,
+        backgroundColor: 'rgba(6, 182, 212, 0.2)',
+        borderColor: '#06b6d4',
+        pointBackgroundColor: '#06b6d4'
+      }]
+    },
+    options: { responsive: true, maintainAspectRatio: false, scales: { r: { min: 0, max: 4 } }, plugins: { legend: { display: false } } }
+  });
+
+  var dimsAcompGral = [
+    "1. Propósito", "2. Saberes", "3. Conflicto", "4. Contenido", 
+    "5. Aplicación", "6. Estrategias", "7. Recursos", "8. Comunicación", 
+    "9. Capacidades", "10. Evaluación", "11. Cierre"
+  ];
+  var acompValsGral = [0,1,2,3,4,5,6,7,8,9,10].map(function(i) {
+    return calcularPromedioDimension(data, [i], 'criteriosAcomp');
+  });
+
+  createOrUpdateBiChart('radarAcompGral', 'chartBiRadarAcompGral', {
+    type: 'radar',
+    data: {
+      labels: dimsAcompGral,
+      datasets: [{
+        label: 'Promedio Acomp (1-4)',
+        data: acompValsGral,
+        backgroundColor: 'rgba(245, 158, 11, 0.2)',
+        borderColor: '#f59e0b',
+        pointBackgroundColor: '#f59e0b'
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        r: {
+          min: 0,
+          max: 4,
+          pointLabels: {
+            font: { size: 10 },
+            callback: function(label) {
+              if (label && label.length > 15) {
+                var words = label.split(' ');
+                var lines = [], cur = '';
+                for (var w = 0; w < words.length; w++) {
+                  if ((cur + ' ' + words[w]).length > 15) {
+                    if (cur) lines.push(cur);
+                    cur = words[w];
+                  } else {
+                    cur = cur ? cur + ' ' + words[w] : words[w];
+                  }
+                }
+                if (cur) lines.push(cur);
+                return lines;
+              }
+              return label;
+            }
           }
         }
-      }
-      if(dim.indicesP && dim.indicesP.length>0) {
-        for(var x=0; x<dP.length; x++){
-          if(!dP[x].criteriosLMS) continue;
-          for(var y=0; y<dim.indicesP.length; y++){
-            var val = dP[x].criteriosLMS[dim.indicesP[y]];
-            if(val) { sTotal+=val; cTotal++; }
-          }
-        }
-      }
-      lmsProms.push(cTotal > 0 ? parseFloat((sTotal/cTotal).toFixed(2)) : 0);
-    } else {
-      lmsProms.push(calcularPromedioDimension(dataFiltrada, dim.indices, 'criteriosLMS'));
+      },
+      plugins: { legend: { display: false } }
     }
-  }
-  createOrUpdateBiChart('chartBiRadarLmsGral', 'radar', lmsLabels, lmsProms, {bg:'rgba(6,182,212,0.15)', border:BI_COLORS.cyan});
+  });
 
-  // Radar Acomp Gral
-  var acLabels=[], acProms=[];
-  var dimKeysAC = Object.keys(DIMENSIONES_ACOMP);
-  for(var k=0; k<dimKeysAC.length; k++) {
-    var dim = DIMENSIONES_ACOMP[dimKeysAC[k]];
-    acLabels.push(dim.nombre);
-    acProms.push(calcularPromedioDimension(dataFiltrada, dim.indices, 'criteriosAcomp'));
-  }
-  createOrUpdateBiChart('chartBiRadarAcompGral', 'radar', acLabels, acProms, {bg:'rgba(245,158,11,0.15)', border:BI_COLORS.yellow});
-
-  renderRankingBi(dataFiltrada);
-  renderListaAgrupadaGeneral(dataFiltrada);
+  // 3. Controles y Listados
+  renderControlesUnificados();
+  renderRankingBi(data, 'bi-rankings-general', filtroUnidad);
+  renderListaAgrupadaGeneral(data, filtroUnidad);
 }
 
-// ---------------------------------------------------------------
-// VISTA 2: LMS
-// ---------------------------------------------------------------
-function renderBiViewLms(dataFiltrada, modalidad) {
-  var sumLMS=0, cntLMS=0;
-  var distNiveles = { 'Muy Bueno (17-20)':0, 'Bueno (14-16)':0, 'Regular (11-13)':0, 'Deficiente (≤10)':0 };
+function renderControlesUnificados() {
+  var el = document.getElementById('bi-controles-unificados');
+  if (!el) return;
 
-  for (var i = 0; i < dataFiltrada.length; i++) {
-    var doc = dataFiltrada[i];
-    if (doc.ptsLMS > 0) { 
-      sumLMS += doc.ptsLMS; cntLMS++;
-      if (doc.ptsLMS >= 17) distNiveles['Muy Bueno (17-20)']++;
-      else if (doc.ptsLMS >= 14) distNiveles['Bueno (14-16)']++;
-      else if (doc.ptsLMS >= 11) distNiveles['Regular (11-13)']++;
-      else distNiveles['Deficiente (≤10)']++;
-    }
-  }
+  var html = '<div style="background:#fff; border-radius:12px; border:1px solid #e2e8f0; padding:12px 20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; box-shadow:0 1px 3px rgba(0,0,0,0.04);">' +
+      '<div style="display:flex; align-items:center; gap:8px;">' +
+        '<span style="font-size:12px; font-weight:700; color:#475569;"><i class="fa-solid fa-table-columns" style="color:#3b82f6; margin-right:6px;"></i>Vista de Tabla:</span>' +
+        '<div style="display:flex; border:1px solid #cbd5e1; border-radius:6px; overflow:hidden;">' +
+          '<button onclick="setBiTablaVistaModo(\'COMPLETA\')" style="padding:6px 12px; font-size:11px; font-weight:700; border:none; background:' + (biTablaVistaModo === 'COMPLETA' ? '#3b82f6' : '#f8fafc') + '; color:' + (biTablaVistaModo === 'COMPLETA' ? '#fff' : '#64748b') + '; cursor:pointer; transition:all 0.2s;"><i class="fa-solid fa-list" style="margin-right:4px;"></i>Completa</button>' +
+          '<button onclick="setBiTablaVistaModo(\'RESUMEN\')" style="padding:6px 12px; font-size:11px; font-weight:700; border:none; border-left:1px solid #cbd5e1; background:' + (biTablaVistaModo === 'RESUMEN' ? '#3b82f6' : '#f8fafc') + '; color:' + (biTablaVistaModo === 'RESUMEN' ? '#fff' : '#64748b') + '; cursor:pointer; transition:all 0.2s;"><i class="fa-solid fa-table" style="margin-right:4px;"></i>Resumen</button>' +
+        '</div>' +
+      '</div>' +
+      '<div style="display:flex; align-items:center; gap:12px;">' +
+        '<label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:12px; font-weight:700; color:#475569;">' +
+          '<input type="checkbox" onchange="toggleBiMostrarPctRev()" ' + (biMostrarPctRev ? 'checked' : '') + ' style="cursor:pointer; width:14px; height:14px; accent-color:#3b82f6;">' +
+          'Mostrar % Avance' +
+        '</label>' +
+        '<button onclick="descargarTablaPdfPorPrograma()" style="padding:6px 14px; font-size:12px; font-weight:700; color:#fff; background:#10b981; border:none; border-radius:6px; cursor:pointer; display:flex; align-items:center; gap:6px; transition:all 0.2s;" onmouseover="this.style.background=\'#059669\'" onmouseout="this.style.background=\'#10b981\'">' +
+          '<i class="fa-solid fa-file-pdf"></i> Imprimir / Descargar PDF' +
+        '</button>' +
+      '</div>' +
+    '</div>';
 
-  // KPIs
-  var kpiD = document.getElementById('bi-kpis-lms');
-  if(kpiD) {
-    kpiD.innerHTML = '<div style="background:#fff; padding:20px; border-radius:12px; border:1px solid #e2e8f0; border-left:5px solid #06b6d4;"><p style="margin:0 0 4px; font-size:11px; font-weight:700; color:#06b6d4; text-transform:uppercase;">Asignaturas Evaluadas (LMS)</p><p style="margin:0; font-size:28px; font-weight:800; color:#1e293b;">'+dataFiltrada.length+'</p></div>' +
-                     '<div style="background:#fff; padding:20px; border-radius:12px; border:1px solid #e2e8f0; border-left:5px solid #0284c7;"><p style="margin:0 0 4px; font-size:11px; font-weight:700; color:#0284c7; text-transform:uppercase;">Promedio LMS (Base 20)</p><p style="margin:0; font-size:28px; font-weight:800; color:#1e293b;">'+(cntLMS>0 ? (sumLMS/cntLMS).toFixed(2) : '-')+'</p></div>';
-  }
-
-  createOrUpdateBiChart('chartBiDistLms', 'doughnut', Object.keys(distNiveles), Object.values(distNiveles), [BI_COLORS.green, BI_COLORS.blue, BI_COLORS.yellow, BI_COLORS.red]);
-
-  // Radar LMS Expandido
-  var lmsLabels=[], lmsProms=[];
-  var dimKeysLMS = modalidad === 'PRESENCIAL' ? Object.keys(DIMENSIONES_PRESENCIAL) : (modalidad === 'VIRTUAL_HIBRIDO' ? Object.keys(DIMENSIONES_VIRTUAL) : Object.keys(DIMENSIONES_TODAS));
-  var dimsMapLMS = modalidad === 'PRESENCIAL' ? DIMENSIONES_PRESENCIAL : (modalidad === 'VIRTUAL_HIBRIDO' ? DIMENSIONES_VIRTUAL : DIMENSIONES_TODAS);
-  for(var k=0; k<dimKeysLMS.length; k++) {
-    var dim = dimsMapLMS[dimKeysLMS[k]];
-    lmsLabels.push(dim.nombre);
-    if(modalidad === 'TODAS') {
-      var dV = dataFiltrada.filter(function(d){return d.modalidad !== 'PRESENCIAL';});
-      var dP = dataFiltrada.filter(function(d){return d.modalidad === 'PRESENCIAL';});
-      var sTotal=0, cTotal=0;
-      if(dim.indicesV && dim.indicesV.length>0) {
-        for(var x=0; x<dV.length; x++){ if(dV[x].criteriosLMS) { for(var y=0; y<dim.indicesV.length; y++){ var v=dV[x].criteriosLMS[dim.indicesV[y]]; if(v){sTotal+=v;cTotal++;} } } }
-      }
-      if(dim.indicesP && dim.indicesP.length>0) {
-        for(var x=0; x<dP.length; x++){ if(dP[x].criteriosLMS) { for(var y=0; y<dim.indicesP.length; y++){ var v=dP[x].criteriosLMS[dim.indicesP[y]]; if(v){sTotal+=v;cTotal++;} } } }
-      }
-      lmsProms.push(cTotal > 0 ? parseFloat((sTotal/cTotal).toFixed(2)) : 0);
-    } else {
-      lmsProms.push(calcularPromedioDimension(dataFiltrada, dim.indices, 'criteriosLMS'));
-    }
-  }
-  createOrUpdateBiChart('chartBiRadarLms', 'radar', lmsLabels, lmsProms, {bg:'rgba(6,182,212,0.15)', border:BI_COLORS.cyan});
-  
-  var bdg = document.getElementById('bi-badge-lms');
-  if(bdg) bdg.textContent = modalidad === 'PRESENCIAL' ? 'Presencial' : (modalidad === 'VIRTUAL_HIBRIDO' ? 'Virtual / Híbrida' : 'Todas las Modalidades');
-
-  renderLeyendaDimensiones(dataFiltrada, modalidad);
-  renderDimensionesPorMejorarLms(dataFiltrada, modalidad);
-  renderListaCritica('bi-criticos-lms', dataFiltrada, 'LMS');
+  el.innerHTML = html;
 }
 
-// ---------------------------------------------------------------
-// VISTA 3: ACOMPAÑAMIENTO
-// ---------------------------------------------------------------
-function renderBiViewAcomp(dataFiltrada, modalidad) {
-  var sumAc=0, cntAc=0;
-  var distNiveles = { 'Muy Bueno (17-20)':0, 'Bueno (14-16)':0, 'Regular (11-13)':0, 'Deficiente (≤10)':0 };
-
-  for (var i = 0; i < dataFiltrada.length; i++) {
-    var doc = dataFiltrada[i];
-    if (doc.ptsAcomp > 0) { 
-      sumAc += doc.ptsAcomp; cntAc++;
-      if (doc.ptsAcomp >= 17) distNiveles['Muy Bueno (17-20)']++;
-      else if (doc.ptsAcomp >= 14) distNiveles['Bueno (14-16)']++;
-      else if (doc.ptsAcomp >= 11) distNiveles['Regular (11-13)']++;
-      else distNiveles['Deficiente (≤10)']++;
-    }
-  }
-
-  // KPIs
-  var kpiD = document.getElementById('bi-kpis-acomp');
-  if(kpiD) {
-    kpiD.innerHTML = '<div style="background:#fff; padding:20px; border-radius:12px; border:1px solid #e2e8f0; border-left:5px solid #f59e0b;"><p style="margin:0 0 4px; font-size:11px; font-weight:700; color:#f59e0b; text-transform:uppercase;">Asignaturas Evaluadas (Acomp.)</p><p style="margin:0; font-size:28px; font-weight:800; color:#1e293b;">'+dataFiltrada.length+'</p></div>' +
-                     '<div style="background:#fff; padding:20px; border-radius:12px; border:1px solid #e2e8f0; border-left:5px solid #d97706;"><p style="margin:0 0 4px; font-size:11px; font-weight:700; color:#d97706; text-transform:uppercase;">Promedio Acompañamiento (Base 20)</p><p style="margin:0; font-size:28px; font-weight:800; color:#1e293b;">'+(cntAc>0 ? (sumAc/cntAc).toFixed(2) : '-')+'</p></div>';
-  }
-
-  createOrUpdateBiChart('chartBiDistAcomp', 'doughnut', Object.keys(distNiveles), Object.values(distNiveles), [BI_COLORS.green, BI_COLORS.blue, BI_COLORS.yellow, BI_COLORS.red]);
-
-  // Radar Acomp Expandido
-  var acLabels=[], acProms=[];
-  var dimKeysAC = Object.keys(DIMENSIONES_ACOMP);
-  for(var k=0; k<dimKeysAC.length; k++) {
-    var dim = DIMENSIONES_ACOMP[dimKeysAC[k]];
-    for(var j=0; j<dim.indices.length; j++) {
-      var idx = dim.indices[j];
-      var critTitle = NOMBRES_COMPLETOS_ACOMP[idx] || biTitlesAcomp[idx] || biHeadersAcomp[idx] || 'Criterio '+(idx+1);
-      
-      var words = critTitle.split(' ');
-      var lines = [];
-      var currentLine = '';
-      for(var w=0; w<words.length; w++) {
-        if(currentLine.length + words[w].length > 20) {
-          if(currentLine) lines.push(currentLine.trim());
-          currentLine = words[w] + ' ';
-        } else {
-          currentLine += words[w] + ' ';
-        }
-      }
-      if(currentLine) lines.push(currentLine.trim());
-      if(lines.length > 2) { lines = lines.slice(0,2); lines[1] += '...'; } // max 2 lines
-      
-      acLabels.push(lines);
-      acProms.push(calcularPromedioDimension(dataFiltrada, [idx], 'criteriosAcomp'));
-    }
-  }
-  createOrUpdateBiChart('chartBiRadarAcomp', 'radar', acLabels, acProms, {bg:'rgba(245,158,11,0.15)', border:BI_COLORS.yellow});
-
-  renderLeyendaAcomp(dataFiltrada);
-  renderDimensionesPorMejorarAcomp(dataFiltrada);
-  renderListaCritica('bi-criticos-acomp', dataFiltrada, 'ACOMP');
-}
-
-// ---------------------------------------------------------------
-// RANKINGS Y LISTAS (VISTA GENERAL)
-// ---------------------------------------------------------------
-function renderRankingBi(dataFiltrada) {
-  var container = document.getElementById('bi-rankings-general');
-  if(!container) return;
-  
-  var conPromedio = dataFiltrada.filter(function(d){ return d.promedio > 0; });
-  conPromedio.sort(function(a,b){ return b.promedio - a.promedio; });
-  
-  var top5 = conPromedio.slice(0, 5);
-  var bottom5 = conPromedio.slice(-5).reverse();
-  
-  function buildHtml(titulo, lista, colorIcono, iconoClase) {
-    var h = '<div style="background:#fff; border-radius:12px; border:1px solid #e2e8f0; padding:16px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.04);">';
-    h += '<h6 style="margin:0 0 12px; font-size:13px; font-weight:700; color:#334155;"><i class="'+iconoClase+'" style="color:'+colorIcono+'; margin-right:6px;"></i>'+titulo+'</h6>';
-    if(lista.length === 0) return h + '<p style="font-size:12px; color:#94a3b8;">Sin datos</p></div>';
-    h += '<ul style="margin:0; padding:0; list-style:none;">';
-    for(var i=0; i<lista.length; i++) {
-       var d = lista[i];
-       h += '<li style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid #f1f5f9;">';
-       h += '<div style="max-width:75%;">';
-       h += '<p style="margin:0; font-size:12px; font-weight:700; color:#1e293b; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="'+d.asignatura+'">'+d.asignatura+'</p>';
-       h += '<p style="margin:0; font-size:10px; color:#64748b;">'+d.docente+' ('+(d.programa||'Sin Prog')+')</p></div>';
-       h += '<span style="font-weight:800; font-size:13px; color:'+colorIcono+';">'+d.promedio.toFixed(2)+'</span></li>';
-    }
-    return h + '</ul></div>';
-  }
-  
-  container.innerHTML = buildHtml('Top 5 Rendimiento', top5, '#10b981', 'fa-solid fa-trophy') + buildHtml('Bottom 5 Rendimiento (Críticos)', bottom5, '#ef4444', 'fa-solid fa-circle-exclamation');
-}
-
-function renderListaAgrupadaGeneral(dataFiltrada) {
-  var container = document.getElementById('bi-lista-general');
-  if(!container) return;
-  
-  var byProg = {};
-  for(var i=0; i<dataFiltrada.length; i++) {
-    var p = dataFiltrada[i].programa || 'Sin Programa';
-    if(!byProg[p]) byProg[p] = [];
-    byProg[p].push(dataFiltrada[i]);
-  }
-  var progs = Object.keys(byProg).sort();
-  
-  var h = '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">';
-  h += '<h6 style="margin:0; font-size:14px; font-weight:700; color:#334155;"><i class="fa-solid fa-table-list" style="color:#64748b; margin-right:6px;"></i>Desempeño Detallado por Programa</h6>';
-  h += '<button id="btn-export-pdf-prog" onclick="descargarTablaPdfPorPrograma()" style="padding:6px 12px; border:none; border-radius:6px; background:#ef4444; color:#fff; font-size:12px; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:6px; transition:all 0.2s; white-space:nowrap;" onmouseover="this.style.background=\'#dc2626\'" onmouseout="this.style.background=\'#ef4444\'"><i class="fa-solid fa-file-pdf"></i> Descargar PDF</button>';
-  h += '</div>';
-  h += '<div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse; font-size:12px; text-align:left; background:#fff;">';
-  
-  for(var i=0; i<progs.length; i++) {
-    h += '<tr style="background:#f8fafc;"><td colspan="5" style="padding:10px; font-weight:800; color:#334155; border-bottom:2px solid #e2e8f0; border-top:1px solid #e2e8f0;">'+progs[i]+' <span style="font-weight:600; font-size:11px; color:#64748b; margin-left:8px;">('+byProg[progs[i]].length+' cursos)</span></td></tr>';
-    h += '<tr style="background:#fff; color:#64748b; font-size:11px; font-weight:700; text-transform:uppercase; border-bottom:1px solid #e2e8f0;">';
-    h += '<th style="padding:8px 10px;">Asignatura</th><th style="padding:8px 10px;">Docente</th><th style="padding:8px 10px;">Prom. General</th><th style="padding:8px 10px;">Prom. LMS</th><th style="padding:8px 10px;">Prom. Acomp.</th></tr>';
-    var docs = byProg[progs[i]];
-    docs.sort(function(a,b){ return b.promedio - a.promedio; });
-    
-    for(var j=0; j<docs.length; j++) {
-      var d = docs[j];
-      var pg = d.promedio > 0 ? d.promedio.toFixed(2) : '-';
-      var pl = d.ptsLMS > 0 ? d.ptsLMS.toFixed(2) : '-';
-      var pa = d.ptsAcomp > 0 ? d.ptsAcomp.toFixed(2) : '-';
-      var cG = pg === '-' ? '' : (pg>=14 ? '#10b981' : (pg>=11 ? '#f59e0b' : '#ef4444'));
-      h += '<tr style="border-bottom:1px solid #f1f5f9;">';
-      h += '<td style="padding:8px 10px; color:#1e293b; font-weight:600;">'+d.asignatura+'</td>';
-      h += '<td style="padding:8px 10px; color:#475569;">'+d.docente+'</td>';
-      h += '<td style="padding:8px 10px; font-weight:800; color:'+cG+';">'+pg+'</td>';
-      h += '<td style="padding:8px 10px; font-weight:600; color:#0ea5e9;">'+pl+'</td>';
-      h += '<td style="padding:8px 10px; font-weight:600; color:#d97706;">'+pa+'</td>';
-      h += '</tr>';
-    }
-  }
-  h += '</table></div>';
-  container.innerHTML = h;
-}
-
-// ---------------------------------------------------------------
-// LEYENDAS Y POR MEJORAR (LMS)
-// ---------------------------------------------------------------
-function renderLeyendaDimensiones(dataFiltrada, modalidadActiva) {
-  var colVirtual = document.getElementById('bi-leyenda-virtual');
-  var colPresencial = document.getElementById('bi-leyenda-presencial');
-  if(!colVirtual || !colPresencial) return;
-  colVirtual.innerHTML = ''; colPresencial.innerHTML = '';
-  
-  function buildDimHTML(dim, dataSlice, mainColor) {
-    if(!dim) return '';
-    var dimAvg = calcularPromedioDimension(dataSlice, dim.indices, 'criteriosLMS');
-    var vigesimal = (dimAvg * 5).toFixed(1);
-    var pct = (dimAvg / 4) * 100;
-    
-    var html = '<div style="margin-bottom:16px; background:#f8fafc; padding:12px; border-radius:8px; border:1px solid #e2e8f0; box-shadow:inset 0 1px 2px rgba(0,0,0,0.02)">';
-    html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">';
-    html += '<span style="font-weight:700; font-size:13px; color:#334155;">'+dim.nombre+'</span>';
-    html += '<span style="font-weight:800; font-size:13px; color:'+mainColor+';">'+vigesimal+' / 20</span>';
-    html += '</div>';
-    html += '<div style="width:100%; height:6px; background:#e2e8f0; border-radius:3px; overflow:hidden; margin-bottom:12px;">';
-    html += '<div style="height:100%; width:'+pct+'%; background:'+mainColor+'; transition:width 0.5s;"></div></div>';
-    
-    for(var j=0; j<dim.indices.length; j++) {
-      var idx = dim.indices[j];
-      var critTitle = biTitlesLMS[idx] || biHeadersLMS[idx] || 'Criterio '+(idx+1);
-      var cAvg = calcularPromedioDimension(dataSlice, [idx], 'criteriosLMS');
-      var cPct = (cAvg / 4) * 100;
-      var cColor = cAvg >= 3 ? '#10b981' : (cAvg >= 2 ? '#f59e0b' : '#ef4444');
-      
-      html += '<div style="margin-bottom:8px;">';
-      html += '<div style="display:flex; justify-content:space-between; align-items:flex-start; font-size:11px; color:#64748b; margin-bottom:4px; gap:8px;">';
-      html += '<span title="'+critTitle+'" style="line-height:1.3; flex:1;">'+critTitle+'</span>';
-      html += '<span style="font-weight:700; white-space:nowrap;">'+cAvg.toFixed(2)+'</span>';
-      html += '</div>';
-      html += '<div style="width:100%; height:4px; background:#e2e8f0; border-radius:2px; overflow:hidden;">';
-      html += '<div style="height:100%; width:'+cPct+'%; background:'+cColor+'; transition:width 0.5s;"></div></div>';
-      html += '</div>';
-    }
-    html += '</div>';
-    return html;
-  }
-  
-  if (modalidadActiva === 'VIRTUAL_HIBRIDO' || modalidadActiva === 'TODAS') {
-    var dataV = modalidadActiva === 'TODAS' ? dataFiltrada.filter(function(d){return d.modalidad !== 'PRESENCIAL';}) : dataFiltrada;
-    var keysV = Object.keys(DIMENSIONES_VIRTUAL);
-    for(var i=0; i<keysV.length; i++) colVirtual.innerHTML += buildDimHTML(DIMENSIONES_VIRTUAL[keysV[i]], dataV, '#3b82f6');
-  } else colVirtual.innerHTML = '<p style="color:#94a3b8; font-style:italic; font-size:12px;">No aplica (Filtro Presencial activo)</p>';
-  
-  if (modalidadActiva === 'PRESENCIAL' || modalidadActiva === 'TODAS') {
-    var dataP = modalidadActiva === 'TODAS' ? dataFiltrada.filter(function(d){return d.modalidad === 'PRESENCIAL';}) : dataFiltrada;
-    var keysP = Object.keys(DIMENSIONES_PRESENCIAL);
-    for(var i=0; i<keysP.length; i++) colPresencial.innerHTML += buildDimHTML(DIMENSIONES_PRESENCIAL[keysP[i]], dataP, '#7c3aed');
-  } else colPresencial.innerHTML = '<p style="color:#94a3b8; font-style:italic; font-size:12px;">No aplica (Filtro Virtual activo)</p>';
-}
-
-function renderDimensionesPorMejorarLms(dataFiltrada, modalidad) {
-  var container = document.getElementById('bi-mejorar-lms');
-  if(!container) return;
-  container.innerHTML = '';
-  var dimensionesBajas = [];
-  
-  function revisar(dimsMap, dataSlice, typeName) {
-    var keys = Object.keys(dimsMap);
-    for(var i=0; i<keys.length; i++) {
-       var dim = dimsMap[keys[i]];
-       var asigsAfectadas = 0;
-       var critsBajos = {};
-       for(var d=0; d<dataSlice.length; d++) {
-         var arr = dataSlice[d].criteriosLMS;
-         if(!arr) continue;
-         var tiene = false;
-         for(var j=0; j<dim.indices.length; j++) {
-           var idx = dim.indices[j];
-           if(arr[idx] === 1 || arr[idx] === 2) { tiene=true; critsBajos[biTitlesLMS[idx]||biHeadersLMS[idx]||'Criterio '+(idx+1)] = true; }
-         }
-         if(tiene) asigsAfectadas++;
-       }
-       if(asigsAfectadas > 0) dimensionesBajas.push({ nombre: dim.nombre, tipo: typeName, afectadas: asigsAfectadas, criterios: Object.keys(critsBajos) });
-    }
-  }
-  
-  if (modalidad === 'VIRTUAL_HIBRIDO' || modalidad === 'TODAS') {
-    var dataV = modalidad === 'TODAS' ? dataFiltrada.filter(function(d){return d.modalidad !== 'PRESENCIAL';}) : dataFiltrada;
-    revisar(DIMENSIONES_VIRTUAL, dataV, 'Virtual / Híbrida');
-  }
-  if (modalidad === 'PRESENCIAL' || modalidad === 'TODAS') {
-    var dataP = modalidad === 'TODAS' ? dataFiltrada.filter(function(d){return d.modalidad === 'PRESENCIAL';}) : dataFiltrada;
-    revisar(DIMENSIONES_PRESENCIAL, dataP, 'Presencial');
-  }
-  
-  if(dimensionesBajas.length === 0) {
-    container.innerHTML = '<div style="padding:20px; text-align:center; color:#10b981; font-weight:700; background:#ecfdf5; border:1px dashed #a7f3d0; border-radius:12px;"><i class="fa-solid fa-check-circle" style="font-size:24px; display:block; margin-bottom:8px;"></i>Todas las dimensiones LMS están en nivel óptimo.</div>';
-    return;
-  }
-  
-  dimensionesBajas.sort(function(a,b){return b.afectadas - a.afectadas;});
-  var html = '<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:16px;">';
-  for(var i=0; i<dimensionesBajas.length; i++) {
-    var d = dimensionesBajas[i];
-    html += '<div style="background:#fff; border:1px solid #fecaca; border-left:5px solid #ef4444; border-radius:12px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.05);">';
-    html += '<div style="padding:12px 16px; background:#fef2f2; border-bottom:1px solid #fee2e2; display:flex; justify-content:space-between; align-items:flex-start;">';
-    html += '<div><h6 style="margin:0 0 4px; font-size:13px; font-weight:800; color:#1e293b;">'+d.nombre+' ('+d.tipo+')</h6>';
-    html += '<span style="background:#fee2e2; color:#b91c1c; font-size:11px; font-weight:700; padding:2px 8px; border-radius:12px;">'+d.afectadas+' afectadas</span></div>';
-    html += '<i class="fa-solid fa-triangle-exclamation" style="color:#ef4444; font-size:16px;"></i></div>';
-    html += '<div style="padding:12px 16px;"><p style="margin:0 0 6px; font-size:11px; font-weight:700; color:#475569;">Criterios Bajos:</p><ul style="margin:0; padding-left:16px; font-size:11px; color:#64748b;">';
-    for(var j=0; j<d.criterios.length; j++) html += '<li>'+d.criterios[j]+'</li>';
-    html += '</ul></div></div>';
-  }
-  container.innerHTML = html + '</div>';
-}
-
-// ---------------------------------------------------------------
-// LEYENDAS Y POR MEJORAR (ACOMPAÑAMIENTO)
-// ---------------------------------------------------------------
-function renderLeyendaAcomp(dataFiltrada) {
-  var col = document.getElementById('bi-leyenda-acomp');
-  if(!col) return;
-  col.innerHTML = '';
-  
-  var keys = Object.keys(DIMENSIONES_ACOMP);
-  for(var i=0; i<keys.length; i++) {
-    var dim = DIMENSIONES_ACOMP[keys[i]];
-    var dimAvg = calcularPromedioDimension(dataFiltrada, dim.indices, 'criteriosAcomp');
-    var vigesimal = (dimAvg * 5).toFixed(1);
-    var pct = (dimAvg / 4) * 100;
-    
-    var html = '<div style="margin-bottom:16px; background:#f8fafc; padding:12px; border-radius:8px; border:1px solid #e2e8f0; box-shadow:inset 0 1px 2px rgba(0,0,0,0.02)">';
-    html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">';
-    html += '<span style="font-weight:700; font-size:13px; color:#334155;">'+dim.nombre+'</span>';
-    html += '<span style="font-weight:800; font-size:13px; color:#d97706;">'+vigesimal+' / 20</span>';
-    html += '</div>';
-    html += '<div style="width:100%; height:6px; background:#e2e8f0; border-radius:3px; overflow:hidden; margin-bottom:12px;">';
-    html += '<div style="height:100%; width:'+pct+'%; background:#f59e0b; transition:width 0.5s;"></div></div>';
-    
-    for(var j=0; j<dim.indices.length; j++) {
-      var idx = dim.indices[j];
-      var critTitle = NOMBRES_COMPLETOS_ACOMP[idx] || biTitlesAcomp[idx] || biHeadersAcomp[idx] || 'Criterio '+(idx+1);
-      var cAvg = calcularPromedioDimension(dataFiltrada, [idx], 'criteriosAcomp');
-      var cPct = (cAvg / 4) * 100;
-      var cColor = cAvg >= 3 ? '#10b981' : (cAvg >= 2 ? '#f59e0b' : '#ef4444');
-      
-      html += '<div style="margin-bottom:8px;">';
-      html += '<div style="display:flex; justify-content:space-between; align-items:flex-start; font-size:11px; color:#64748b; margin-bottom:4px; gap:8px;">';
-      html += '<span title="'+critTitle+'" style="line-height:1.3; flex:1;">'+critTitle+'</span>';
-      html += '<span style="font-weight:700; white-space:nowrap;">'+cAvg.toFixed(2)+'</span>';
-      html += '</div>';
-      html += '<div style="width:100%; height:4px; background:#e2e8f0; border-radius:2px; overflow:hidden;">';
-      html += '<div style="height:100%; width:'+cPct+'%; background:'+cColor+'; transition:width 0.5s;"></div></div>';
-      html += '</div>';
-    }
-    html += '</div>';
-    col.innerHTML += html;
-  }
-}
-
-function renderDimensionesPorMejorarAcomp(dataFiltrada) {
-  var container = document.getElementById('bi-mejorar-acomp');
-  if(!container) return;
-  container.innerHTML = '';
-  var dimensionesBajas = [];
-  
-  var keys = Object.keys(DIMENSIONES_ACOMP);
-  for(var i=0; i<keys.length; i++) {
-     var dim = DIMENSIONES_ACOMP[keys[i]];
-     var asigsAfectadas = 0;
-     var critsBajos = {};
-     for(var d=0; d<dataFiltrada.length; d++) {
-       var arr = dataFiltrada[d].criteriosAcomp;
-       if(!arr) continue;
-       var tiene = false;
-       for(var j=0; j<dim.indices.length; j++) {
-         var idx = dim.indices[j];
-         if(arr[idx] === 1 || arr[idx] === 2) { tiene=true; critsBajos[biTitlesAcomp[idx]||biHeadersAcomp[idx]||'Criterio '+(idx+1)] = true; }
-       }
-       if(tiene) asigsAfectadas++;
-     }
-     if(asigsAfectadas > 0) dimensionesBajas.push({ nombre: dim.nombre, afectadas: asigsAfectadas, criterios: Object.keys(critsBajos) });
-  }
-  
-  if(dimensionesBajas.length === 0) {
-    container.innerHTML = '<div style="padding:20px; text-align:center; color:#10b981; font-weight:700; background:#ecfdf5; border:1px dashed #a7f3d0; border-radius:12px;"><i class="fa-solid fa-check-circle" style="font-size:24px; display:block; margin-bottom:8px;"></i>Todas las dimensiones pedagógicas están en nivel óptimo.</div>';
-    return;
-  }
-  
-  dimensionesBajas.sort(function(a,b){return b.afectadas - a.afectadas;});
-  var html = '<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:16px;">';
-  for(var i=0; i<dimensionesBajas.length; i++) {
-    var d = dimensionesBajas[i];
-    html += '<div style="background:#fff; border:1px solid #fecaca; border-left:5px solid #ef4444; border-radius:12px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.05);">';
-    html += '<div style="padding:12px 16px; background:#fef2f2; border-bottom:1px solid #fee2e2; display:flex; justify-content:space-between; align-items:flex-start;">';
-    html += '<div><h6 style="margin:0 0 4px; font-size:13px; font-weight:800; color:#1e293b;">'+d.nombre+'</h6>';
-    html += '<span style="background:#fee2e2; color:#b91c1c; font-size:11px; font-weight:700; padding:2px 8px; border-radius:12px;">'+d.afectadas+' afectadas</span></div>';
-    html += '<i class="fa-solid fa-triangle-exclamation" style="color:#ef4444; font-size:16px;"></i></div>';
-    html += '<div style="padding:12px 16px;"><p style="margin:0 0 6px; font-size:11px; font-weight:700; color:#475569;">Criterios Bajos:</p><ul style="margin:0; padding-left:16px; font-size:11px; color:#64748b;">';
-    for(var j=0; j<d.criterios.length; j++) html += '<li>'+d.criterios[j]+'</li>';
-    html += '</ul></div></div>';
-  }
-  container.innerHTML = html + '</div>';
-}
-
-// ---------------------------------------------------------------
-// LISTA DE ASIGNATURAS CRÍTICAS
-// ---------------------------------------------------------------
-function renderListaCritica(containerId, dataFiltrada, tipo) {
+function renderRankingBi(data, containerId, filtroUnidad) {
   var container = document.getElementById(containerId);
-  if(!container) return;
-  
-  var prop = tipo === 'LMS' ? 'ptsLMS' : 'ptsAcomp';
-  var crits = dataFiltrada.filter(function(d){ return d[prop] > 0 && d[prop] <= 13; }); 
-  crits.sort(function(a,b){ return a[prop] - b[prop]; });
-  
-  var h = '<h6 style="margin:0 0 16px; font-size:14px; font-weight:700; color:#334155;"><i class="fa-solid fa-clipboard-list" style="color:#64748b; margin-right:6px;"></i>Asignaturas con Rendimiento Crítico ('+tipo+')</h6>';
-  if(crits.length === 0) {
-    container.innerHTML = h + '<p style="font-size:13px; color:#10b981; font-weight:600;"><i class="fa-solid fa-check"></i> No hay asignaturas en nivel Regular o Deficiente.</p>';
-    return;
+  if (!container) return;
+
+  var validos = [];
+  for (var i = 0; i < data.length; i++) {
+    var p = calcularPuntajeVigesimalCurso(data[i], 'GENERAL', filtroUnidad);
+    if (p !== null && p > 0) {
+      validos.push({ doc: data[i], prom: p });
+    }
   }
-  
-  h += '<div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse; font-size:12px; text-align:left;">';
-  h += '<tr style="background:#f1f5f9; color:#475569; font-size:11px; font-weight:700; text-transform:uppercase; border-bottom:1px solid #e2e8f0;">';
-  h += '<th style="padding:8px 10px;">Asignatura</th><th style="padding:8px 10px;">Docente</th><th style="padding:8px 10px;">Programa</th><th style="padding:8px 10px;">Nota '+tipo+'</th></tr>';
-  
-  var max = Math.min(10, crits.length);
-  for(var i=0; i<max; i++) {
-    var c = crits[i];
-    h += '<tr style="border-bottom:1px solid #f1f5f9;">';
-    h += '<td style="padding:8px 10px; color:#1e293b; font-weight:600;">'+c.asignatura+'</td>';
-    h += '<td style="padding:8px 10px; color:#475569;">'+c.docente+'</td>';
-    h += '<td style="padding:8px 10px; color:#64748b; font-size:11px;">'+c.programa+'</td>';
-    var color = c[prop] <= 10 ? '#ef4444' : '#f59e0b';
-    h += '<td style="padding:8px 10px; font-weight:800; color:'+color+';">'+parseFloat(c[prop]).toFixed(2)+'</td>';
-    h += '</tr>';
+
+  validos.sort(function(a, b) { return b.prom - a.prom; });
+  var top5 = validos.slice(0, 5);
+  var bottom5 = validos.slice(-5).reverse();
+
+  function buildHtml(lista, isTop) {
+    var title = isTop ? 'Top 5 - Mejor Desempeño' : 'Top 5 - Necesitan Acompañamiento';
+    var icon = isTop ? 'fa-trophy' : 'fa-triangle-exclamation';
+    var color = isTop ? '#10b981' : '#ef4444';
+
+    var h = '<div style="background:#fff; border-radius:12px; border:1px solid #e2e8f0; padding:16px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.04);">' +
+      '<h6 style="margin:0 0 12px; font-size:13px; font-weight:700; color:' + color + ';"><i class="fa-solid ' + icon + '" style="margin-right:6px;"></i>' + title + '</h6>' +
+      '<div style="display:flex; flex-direction:column; gap:8px;">';
+
+    if (lista.length === 0) {
+      h += '<p style="font-size:12px; color:#94a3b8; margin:0;">Sin datos evaluados.</p>';
+    } else {
+      for (var i = 0; i < lista.length; i++) {
+        var item = lista[i];
+        var badgeColor = item.prom >= 14 ? '#10b981' : item.prom >= 11 ? '#f59e0b' : '#ef4444';
+        h += '<div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; padding:6px 8px; background:#f8fafc; border-radius:6px;">' +
+          '<div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:80%;">' +
+            '<span style="font-weight:700; color:#1e293b;">' + (i+1) + '. ' + item.doc.nombre + '</span><br>' +
+            '<span style="font-size:10px; color:#64748b;">' + item.doc.asignatura + '</span>' +
+          '</div>' +
+          '<span style="font-weight:800; font-size:12px; color:#fff; background:' + badgeColor + '; padding:2px 8px; border-radius:10px;">' + item.prom.toFixed(2) + '</span>' +
+        '</div>';
+      }
+    }
+    h += '</div></div>';
+    return h;
   }
-  h += '</table></div>';
-  if(crits.length > 10) h += '<p style="margin:10px 0 0; font-size:11px; color:#94a3b8; font-style:italic;">Y otras '+(crits.length-10)+' asignaturas en nivel crítico...</p>';
-  container.innerHTML = h;
+
+  container.innerHTML = buildHtml(top5, true) + buildHtml(bottom5, false);
 }
 
-// ---------------------------------------------------------------
-// EXPORTACIÓN A PDF
-// ---------------------------------------------------------------
-function descargarTablaPdfPorPrograma() {
-  if (typeof html2pdf === 'undefined') {
-    alert("Error: Librería de PDF (html2pdf) no cargada o bloqueada por el navegador.");
-    return;
-  }
-  
-  var btn = document.getElementById('btn-export-pdf-prog');
-  if(btn) {
-    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Generando...';
-    btn.disabled = true;
-    btn.style.opacity = '0.7';
+function renderListaAgrupadaGeneral(data, filtroUnidad) {
+  var el = document.getElementById('bi-lista-general');
+  if (!el) return;
+
+  var grupos = {};
+  for (var i = 0; i < data.length; i++) {
+    var p = data[i].programa || 'Sin Programa';
+    if (!grupos[p]) grupos[p] = [];
+    grupos[p].push(data[i]);
   }
 
-  var element = document.getElementById('bi-lista-general');
-  // Temporarily hide the button before capturing
-  if(btn) btn.style.display = 'none';
+  var html = '<h6 style="margin:0 0 16px; font-size:14px; font-weight:700; color:#1e293b;"><i class="fa-solid fa-list-ol" style="color:#3b82f6; margin-right:8px;"></i>Desempeño Detallado por Programa</h6>' +
+             '<div style="display:flex; flex-direction:column; gap:16px;">';
+
+  var listaProgs = Object.keys(grupos).sort();
+  for (var k = 0; k < listaProgs.length; k++) {
+    var prog = listaProgs[k];
+    var docs = grupos[prog];
+
+    var sumP = 0, countP = 0;
+    var rowsData = [];
+    for (var d = 0; d < docs.length; d++) {
+      var itemDoc = docs[d];
+      var promVal = calcularPuntajeVigesimalCurso(itemDoc, 'GENERAL', filtroUnidad);
+      if (promVal !== null && promVal > 0) {
+        sumP += promVal; countP++;
+      }
+      rowsData.push({ doc: itemDoc, prom: promVal });
+    }
+
+    rowsData.sort(function(a, b) {
+      var valA = (a.prom !== null && a.prom > 0) ? a.prom : -1;
+      var valB = (b.prom !== null && b.prom > 0) ? b.prom : -1;
+      return valB - valA;
+    });
+
+    var avgProg = countP > 0 ? (sumP / countP).toFixed(2) : '-';
+
+    html += '<div style="border:1px solid #e2e8f0; border-radius:8px; overflow:hidden;">' +
+      '<div style="background:#f1f5f9; padding:10px 16px; display:flex; justify-content:space-between; align-items:center;">' +
+        '<span style="font-weight:800; font-size:13px; color:#334155;">' + prog + ' <span style="font-weight:500; font-size:11px; color:#64748b;">(' + docs.length + ' asignaturas)</span></span>' +
+        '<span style="font-weight:700; font-size:12px; color:#1e293b;">Promedio Programa: <span style="color:#3b82f6; font-size:13px;">' + avgProg + '</span></span>' +
+      '</div>' +
+      '<div style="overflow-x:auto;">' +
+        '<table style="width:100%; border-collapse:collapse; font-size:11px; text-align:left;">' +
+          '<thead>' +
+            '<tr style="background:#f8fafc; color:#64748b; border-bottom:1px solid #e2e8f0;">' +
+              '<th style="padding:8px 12px;">Docente / Asignatura</th>' +
+              '<th style="padding:8px 12px; text-align:center;">Modalidad</th>';
+
+    if (biTablaVistaModo === 'COMPLETA') {
+      html += '<th style="padding:8px 12px; text-align:center;">' + (biMostrarPctRev ? 'Avance LMS' : 'LMS (Base 20)') + '</th>' +
+              '<th style="padding:8px 12px; text-align:center;">' + (biMostrarPctRev ? 'Avance Acomp' : 'Acomp (Base 20)') + '</th>';
+    }
+
+    html += '<th style="padding:8px 12px; text-align:center;">' + (biMostrarPctRev ? 'Avance Gral' : 'Promedio Final') + '</th>' +
+            '<th style="padding:8px 12px; text-align:center;">Estado</th>' +
+            '</tr>' +
+          '</thead>' +
+          '<tbody style="divide-y: 1px solid #f1f5f9;">';
+
+    for (var i = 0; i < rowsData.length; i++) {
+      var row = rowsData[i];
+      var doc = row.doc;
+      var prom = row.prom;
+      var scoreL = calcularPuntajeVigesimalCurso(doc, 'LMS', filtroUnidad);
+      var scoreA = calcularPuntajeVigesimalCurso(doc, 'ACOMP', filtroUnidad);
+
+      var stG = calcularStatsRevision(doc, 'GENERAL', filtroUnidad);
+      var stL = calcularStatsRevision(doc, 'LMS', filtroUnidad);
+      var stA = calcularStatsRevision(doc, 'ACOMP', filtroUnidad);
+
+      var cellProm = prom !== null ? '<span style="font-weight:700; color:' + (prom >= 14 ? '#10b981' : prom >= 11 ? '#f59e0b' : '#ef4444') + ';">' + prom.toFixed(2) + '</span>' : '<span style="color:#94a3b8;">-</span>';
+      var cellLms = scoreL !== null ? scoreL.toFixed(2) : '<span style="color:#94a3b8;">-</span>';
+      var cellAcomp = scoreA !== null ? scoreA.toFixed(2) : '<span style="color:#94a3b8;">-</span>';
+
+      if (biMostrarPctRev) {
+        cellProm = getBadgeRevisionHTML(stG);
+        cellLms = getBadgeRevisionHTML(stL);
+        cellAcomp = getBadgeRevisionHTML(stA);
+      }
+
+      var estadoBadge = '<span style="color:#94a3b8; font-size:10px;">Pendiente</span>';
+      if (prom !== null && prom > 0) {
+        if (prom >= 18) estadoBadge = '<span style="color:#10b981; font-weight:700; font-size:10px;">Muy Bueno</span>';
+        else if (prom >= 14) estadoBadge = '<span style="color:#3b82f6; font-weight:700; font-size:10px;">Bueno</span>';
+        else if (prom >= 11) estadoBadge = '<span style="color:#f59e0b; font-weight:700; font-size:10px;">Regular</span>';
+        else estadoBadge = '<span style="color:#ef4444; font-weight:700; font-size:10px;">Deficiente</span>';
+      }
+
+      html += '<tr style="border-bottom:1px solid #f1f5f9;">' +
+        '<td style="padding:8px 12px;">' +
+          '<div style="font-weight:700; color:#1e293b;">' + doc.nombre + '</div>' +
+          '<div style="color:#64748b; font-size:10px;">' + doc.asignatura + '</div>' +
+        '</td>' +
+        '<td style="padding:8px 12px; text-align:center;"><span style="font-size:9px; font-weight:700; padding:2px 6px; border-radius:10px; background:' + (doc.modalidad === 'PRESENCIAL' ? '#ede9fe; color:#6d28d9' : '#e0f2fe; color:#0369a1') + ';">' + doc.modalidad + '</span></td>';
+
+      if (biTablaVistaModo === 'COMPLETA') {
+        html += '<td style="padding:8px 12px; text-align:center;">' + cellLms + '</td>' +
+                '<td style="padding:8px 12px; text-align:center;">' + cellAcomp + '</td>';
+      }
+
+      html += '<td style="padding:8px 12px; text-align:center;">' + cellProm + '</td>' +
+              '<td style="padding:8px 12px; text-align:center;">' + estadoBadge + '</td>' +
+              '</tr>';
+    }
+
+    html += '</tbody></table></div></div>';
+  }
+
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+/** VISTA 2: RESULTADOS LMS */
+function renderBiViewLms(data, filtroMod, filtroUnidad) {
+  var total = data.length;
+  var sumLms = 0, countLms = 0;
+  var distLms = { muyBueno: 0, bueno: 0, regular: 0, deficiente: 0, sinEvaluar: 0 };
+
+  for (var i = 0; i < total; i++) {
+    var p = calcularPuntajeVigesimalCurso(data[i], 'LMS', filtroUnidad);
+    if (p !== null && p > 0) {
+      sumLms += p; countLms++;
+      if (p >= 18) distLms.muyBueno++;
+      else if (p >= 14) distLms.bueno++;
+      else if (p >= 11) distLms.regular++;
+      else distLms.deficiente++;
+    } else {
+      distLms.sinEvaluar++;
+    }
+  }
+
+  var avgLms = countLms > 0 ? (sumLms / countLms).toFixed(2) : '-';
+
+  // 1. KPIs LMS
+  var kpisEl = document.getElementById('bi-kpis-lms');
+  if (kpisEl) {
+    kpisEl.innerHTML = 
+      buildKpiCard('Asignaturas Evaluadas LMS', countLms + ' <span style="font-size:13px; font-weight:600; color:#64748b;">/ ' + total + '</span>', 'fa-laptop-code', '#06b6d4') +
+      buildKpiCard('Promedio Global LMS', avgLms, 'fa-star', '#06b6d4', '/20');
+  }
+
+  // 2. Gráficos
+  createOrUpdateBiChart('distLms', 'chartBiDistLms', {
+    type: 'doughnut',
+    data: {
+      labels: ['Muy Bueno (18-20)', 'Bueno (14-17)', 'Regular (11-13)', 'Deficiente (<11)', 'Sin Evaluar'],
+      datasets: [{
+        data: [distLms.muyBueno, distLms.bueno, distLms.regular, distLms.deficiente, distLms.sinEvaluar],
+        backgroundColor: [BI_COLORS.muyBueno, BI_COLORS.bueno, BI_COLORS.regular, BI_COLORS.deficiente, BI_COLORS.gray]
+      }]
+    },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
+  });
+
+  var dimsLmsFull = [];
+  var badgeLms = document.getElementById('bi-badge-lms');
+  if (badgeLms) {
+    if (filtroMod === 'PRESENCIAL') badgeLms.innerText = 'Presencial (Evaluaciones)';
+    else if (filtroMod === 'VIRTUAL_HIBRIDO') badgeLms.innerText = 'Virtual / Híbrida (Tutorías)';
+    else badgeLms.innerText = 'Consolidado Todas';
+  }
+
+  if (filtroMod === 'PRESENCIAL') {
+    dimsLmsFull = [
+      { label: '1. Org. y Gestión', idx: [0, 1] },
+      { label: '2. Sesiones de clase', idx: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11] },
+      { label: '3. Evaluaciones', idx: [16, 17, 18] },
+      { label: '4. Inasistencias', idx: [19] },
+      { label: '5. Calificación', idx: [20, 21, 22, 23, 24, 25, 26, 27] },
+      { label: '6. Comunicación', idx: [28, 29, 30, 31] },
+      { label: '7. Riesgo Acad.', idx: [32, 33, 34, 35] },
+      { label: '8. Cierre e Informes', idx: [36, 37] }
+    ];
+  } else {
+    dimsLmsFull = [
+      { label: '1. Org. y Gestión', idx: [0, 1] },
+      { label: '2. Sesiones en línea', idx: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11] },
+      { label: '3. Tutorías', idx: [12, 13, 14, 15] },
+      { label: '4. Calificación', idx: [20, 21, 22, 23, 24, 25, 26, 27] },
+      { label: '5. Comunicación', idx: [28, 29, 30, 31] },
+      { label: '6. Riesgo Acad.', idx: [32, 33, 34, 35] },
+      { label: '7. Cierre e Informes', idx: [36, 37] }
+    ];
+  }
+
+  var lmsValsFull = dimsLmsFull.map(function(d) { return calcularPromedioDimension(data, d.idx, 'criteriosLMS'); });
+
+  createOrUpdateBiChart('radarLms', 'chartBiRadarLms', {
+    type: 'radar',
+    data: {
+      labels: dimsLmsFull.map(function(d) { return d.label; }),
+      datasets: [{
+        label: 'Promedio (Escala 1-4)',
+        data: lmsValsFull,
+        backgroundColor: 'rgba(6, 182, 212, 0.2)',
+        borderColor: '#06b6d4',
+        pointBackgroundColor: '#06b6d4'
+      }]
+    },
+    options: { responsive: true, maintainAspectRatio: false, scales: { r: { min: 0, max: 4 } }, plugins: { legend: { display: false } } }
+  });
+
+  // 3. Leyenda LMS
+  renderLeyendaDimensiones(data, filtroMod);
+
+  // 4. Dimensiones a mejorar y Críticos
+  renderDimensionesPorMejorarLms(data, filtroMod);
+  renderListaCritica(data, 'bi-criticos-lms', 'LMS', filtroUnidad);
+
+  // 5. Lista Agrupada LMS por Programa
+  renderListaAgrupadaLms(data, filtroUnidad);
+}
+
+function renderListaAgrupadaLms(data, filtroUnidad) {
+  var el = document.getElementById('bi-lista-agrupada-lms');
+  if (!el) return;
+
+  var grupos = {};
+  for (var i = 0; i < data.length; i++) {
+    var p = data[i].programa || 'Sin Programa';
+    if (!grupos[p]) grupos[p] = [];
+    grupos[p].push(data[i]);
+  }
+
+  var html = '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:16px;">' +
+      '<h6 style="margin:0; font-size:14px; font-weight:700; color:#1e293b;"><i class="fa-solid fa-list-ol" style="color:#06b6d4; margin-right:8px;"></i>Desempeño Detallado por Programa (LMS)</h6>' +
+      '<button onclick="descargarTablaPdfLmsPorPrograma()" style="padding:6px 14px; font-size:12px; font-weight:700; color:#fff; background:#06b6d4; border:none; border-radius:6px; cursor:pointer; display:flex; align-items:center; gap:6px; transition:all 0.2s;" onmouseover="this.style.background=\'#0891b2\'" onmouseout="this.style.background=\'#06b6d4\'">' +
+        '<i class="fa-solid fa-file-pdf"></i> Imprimir / Descargar PDF' +
+      '</button>' +
+    '</div>' +
+    '<div id="bi-print-section-lms" style="display:flex; flex-direction:column; gap:16px;">';
+
+  var listaProgs = Object.keys(grupos).sort();
+  for (var k = 0; k < listaProgs.length; k++) {
+    var prog = listaProgs[k];
+    var docs = grupos[prog];
+
+    var sumP = 0, countP = 0;
+    var sumAvanceP = 0;
+    var rowsData = [];
+    for (var d = 0; d < docs.length; d++) {
+      var itemDoc = docs[d];
+      var promVal = calcularPuntajeVigesimalCurso(itemDoc, 'LMS', filtroUnidad);
+      var stL = calcularStatsRevision(itemDoc, 'LMS', filtroUnidad);
+      sumAvanceP += stL.porcentaje;
+      if (promVal !== null && promVal > 0) {
+        sumP += promVal; countP++;
+      }
+      rowsData.push({ doc: itemDoc, prom: promVal, statsLms: stL });
+    }
+
+    rowsData.sort(function(a, b) {
+      var valA = (a.prom !== null && a.prom > 0) ? a.prom : -1;
+      var valB = (b.prom !== null && b.prom > 0) ? b.prom : -1;
+      return valB - valA;
+    });
+
+    var avgProg = countP > 0 ? (sumP / countP).toFixed(2) : '-';
+    var avgAvanceProg = docs.length > 0 ? Math.round(sumAvanceP / docs.length) : 0;
+
+    html += '<div style="border:1px solid #e2e8f0; border-radius:8px; overflow:hidden;">' +
+      '<div style="background:#f1f5f9; padding:10px 16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">' +
+        '<span style="font-weight:800; font-size:13px; color:#334155;">' + prog + ' <span style="font-weight:500; font-size:11px; color:#64748b;">(' + docs.length + ' asignaturas)</span></span>' +
+        '<div style="display:flex; align-items:center; gap:16px;">' +
+          '<span style="font-weight:700; font-size:12px; color:#1e293b;">Avance LMS Promedio: <span style="color:#0ea5e9; font-size:13px; font-weight:800;">' + avgAvanceProg + '%</span></span>' +
+          '<span style="font-weight:700; font-size:12px; color:#1e293b;">Nota LMS Promedio: <span style="color:#06b6d4; font-size:13px; font-weight:800;">' + avgProg + '</span></span>' +
+        '</div>' +
+      '</div>' +
+      '<div style="overflow-x:auto;">' +
+        '<table style="width:100%; border-collapse:collapse; font-size:11px; text-align:left;">' +
+          '<thead>' +
+            '<tr style="background:#f8fafc; color:#64748b; border-bottom:1px solid #e2e8f0;">' +
+              '<th style="padding:8px 12px;">Docente / Asignatura</th>' +
+              '<th style="padding:8px 12px; text-align:center;">Modalidad</th>' +
+              '<th style="padding:8px 12px; text-align:center;">% Avance LMS</th>' +
+              '<th style="padding:8px 12px; text-align:center;">Nota LMS (Base 20)</th>' +
+              '<th style="padding:8px 12px; text-align:center;">Estado LMS</th>' +
+            '</tr>' +
+          '</thead>' +
+          '<tbody style="divide-y: 1px solid #f1f5f9;">';
+
+    for (var i = 0; i < rowsData.length; i++) {
+      var row = rowsData[i];
+      var doc = row.doc;
+      var prom = row.prom;
+      var stL = row.statsLms || calcularStatsRevision(doc, 'LMS', filtroUnidad);
+
+      var cellProm = prom !== null ? '<span style="font-weight:700; color:' + (prom >= 14 ? '#10b981' : prom >= 11 ? '#f59e0b' : '#ef4444') + ';">' + prom.toFixed(2) + '</span>' : '<span style="color:#94a3b8;">-</span>';
+      var cellAvance = getBadgeRevisionHTML(stL);
+
+      var estadoBadge = '<span style="color:#94a3b8; font-size:10px;">Pendiente</span>';
+      if (prom !== null && prom > 0) {
+        if (prom >= 18) estadoBadge = '<span style="color:#10b981; font-weight:700; font-size:10px;">Muy Bueno</span>';
+        else if (prom >= 14) estadoBadge = '<span style="color:#06b6d4; font-weight:700; font-size:10px;">Bueno</span>';
+        else if (prom >= 11) estadoBadge = '<span style="color:#f59e0b; font-weight:700; font-size:10px;">Regular</span>';
+        else estadoBadge = '<span style="color:#ef4444; font-weight:700; font-size:10px;">Deficiente</span>';
+      }
+
+      html += '<tr style="border-bottom:1px solid #f1f5f9;">' +
+        '<td style="padding:8px 12px;">' +
+          '<div style="font-weight:700; color:#1e293b;">' + doc.nombre + '</div>' +
+          '<div style="color:#64748b; font-size:10px;">' + doc.asignatura + '</div>' +
+        '</td>' +
+        '<td style="padding:8px 12px; text-align:center;"><span style="font-size:9px; font-weight:700; padding:2px 6px; border-radius:10px; background:' + (doc.modalidad === 'PRESENCIAL' ? '#ede9fe; color:#6d28d9' : '#e0f2fe; color:#0369a1') + ';">' + doc.modalidad + '</span></td>' +
+        '<td style="padding:8px 12px; text-align:center;">' + cellAvance + '</td>' +
+        '<td style="padding:8px 12px; text-align:center;">' + cellProm + '</td>' +
+        '<td style="padding:8px 12px; text-align:center;">' + estadoBadge + '</td>' +
+      '</tr>';
+    }
+
+    html += '</tbody></table></div></div>';
+  }
+
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+function renderLeyendaDimensiones(data, filtroMod) {
+  var elV = document.getElementById('bi-leyenda-virtual');
+  var elP = document.getElementById('bi-leyenda-presencial');
+
+  var dimsV = [
+    { num: '1', nombre: 'Organización y gestión académica virtual', idx: [0, 1] },
+    { num: '2', nombre: 'Desarrollo de sesiones de aprendizaje en línea y uso de formatos institucionales', idx: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11] },
+    { num: '3', nombre: 'Tutoría académica virtual', idx: [12, 13, 14, 15] },
+    { num: '4', nombre: 'Calificación de actividades y retroalimentación', idx: [20, 21, 22, 23, 24, 25, 26, 27] },
+    { num: '5', nombre: 'Comunicación oportuna', idx: [28, 29, 30, 31] },
+    { num: '6', nombre: 'Estudiantes en riesgo académico', idx: [32, 33, 34, 35] },
+    { num: '7', nombre: 'Cierre de actividades e informes', idx: [36, 37] }
+  ];
+
+  var dimsP = [
+    { num: '1', nombre: 'Organización y gestión', idx: [0, 1] },
+    { num: '2', nombre: 'Desarrollo de sesiones de clase y uso de formatos institucionales', idx: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11] },
+    { num: '3', nombre: 'Evaluaciones', idx: [16, 17, 18] },
+    { num: '4', nombre: 'Inasistencias', idx: [19] },
+    { num: '5', nombre: 'Calificación de actividades y retroalimentación', idx: [20, 21, 22, 23, 24, 25, 26, 27] },
+    { num: '6', nombre: 'Comunicación oportuna', idx: [28, 29, 30, 31] },
+    { num: '7', nombre: 'Estudiantes en riesgo académico', idx: [32, 33, 34, 35] },
+    { num: '8', nombre: 'Cierre de actividades e informes', idx: [36, 37] }
+  ];
+
+  function buildDimHTML(dims, color) {
+    var h = '<div style="display:flex; flex-direction:column; gap:8px;">';
+    for (var i = 0; i < dims.length; i++) {
+      var d = dims[i];
+      var prom = calcularPromedioDimension(data, d.idx, 'criteriosLMS');
+      var badgeColor = prom >= 3.5 ? '#10b981' : prom >= 2.5 ? '#3b82f6' : prom >= 1.5 ? '#f59e0b' : '#ef4444';
+      h += '<div style="display:flex; justify-content:space-between; align-items:center; padding:6px 10px; background:#f8fafc; border-left:3px solid ' + color + '; border-radius:4px; font-size:11px;">' +
+        '<span style="font-weight:600; color:#334155; max-width:85%;">' + d.num + '. ' + d.nombre + '</span>' +
+        '<span style="font-weight:800; color:' + badgeColor + ';">' + (prom > 0 ? prom.toFixed(2) : '-') + '</span>' +
+      '</div>';
+    }
+    h += '</div>';
+    return h;
+  }
+
+  if (elV) elV.innerHTML = buildDimHTML(dimsV, '#2563eb');
+  if (elP) elP.innerHTML = buildDimHTML(dimsP, '#7c3aed');
+}
+
+function renderDimensionesPorMejorarLms(data, filtroMod) {
+  var el = document.getElementById('bi-mejorar-lms');
+  if (!el) return;
+
+  var criticosPorCriterio = {};
+  for (var c = 0; c < 38; c++) {
+    criticosPorCriterio[c] = 0;
+  }
+
+  var totalAsignaturasConNotas = 0;
+  for (var i = 0; i < data.length; i++) {
+    var arr = data[i].criteriosLMS;
+    if (!arr) continue;
+    var tieneNota = false;
+    for (var c = 0; c < 38; c++) {
+      var val = arr[c];
+      if (val !== null && val !== undefined && val !== '' && !isNaN(val) && Number(val) > 0) {
+        tieneNota = true;
+        if (Number(val) <= 2) {
+          criticosPorCriterio[c]++;
+        }
+      }
+    }
+    if (tieneNota) totalAsignaturasConNotas++;
+  }
+
+  var rankingCriterios = [];
+  for (var c = 0; c < 38; c++) {
+    if (criticosPorCriterio[c] > 0) {
+      var nombre = biTitlesLMS[c] || biHeadersLMS[c] || ('Criterio ' + (c+1));
+      rankingCriterios.push({
+        idx: c,
+        nombre: nombre,
+        count: criticosPorCriterio[c],
+        pct: totalAsignaturasConNotas > 0 ? Math.round((criticosPorCriterio[c] / totalAsignaturasConNotas) * 100) : 0
+      });
+    }
+  }
+
+  rankingCriterios.sort(function(a, b) { return b.count - a.count; });
+  var topCriticos = rankingCriterios.slice(0, 6);
+
+  if (topCriticos.length === 0) {
+    el.innerHTML = '<p style="color:#10b981; font-size:12px; font-weight:600; margin:0;"><i class="fa-solid fa-circle-check" style="margin-right:6px;"></i>¡Excelente! No se registran criterios en nivel deficiente (notas 1 o 2) en esta selección.</p>';
+    return;
+  }
+
+  var html = '<div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:12px;">';
+  for (var k = 0; k < topCriticos.length; k++) {
+    var item = topCriticos[k];
+    html += '<div style="background:#fef2f2; border:1px solid #fecaca; border-radius:8px; padding:10px 12px; display:flex; flex-direction:column; justify-content:space-between;">' +
+      '<div style="font-size:11px; font-weight:700; color:#991b1b; margin-bottom:6px; line-height:1.3;">' + item.nombre + '</div>' +
+      '<div style="display:flex; justify-content:space-between; align-items:center; font-size:11px;">' +
+        '<span style="color:#b91c1c; font-weight:600;">' + item.count + ' docentes</span>' +
+        '<span style="background:#ef4444; color:#fff; font-weight:800; font-size:10px; padding:2px 6px; border-radius:10px;">' + item.pct + '%</span>' +
+      '</div>' +
+    '</div>';
+  }
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+/** VISTA 3: RESULTADOS ACOMPAÑAMIENTO */
+function renderBiViewAcomp(data, filtroMod, filtroUnidad) {
+  var total = data.length;
+  var sumAcomp = 0, countAcomp = 0;
+  var distAcomp = { muyBueno: 0, bueno: 0, regular: 0, deficiente: 0, sinEvaluar: 0 };
+
+  for (var i = 0; i < total; i++) {
+    var p = calcularPuntajeVigesimalCurso(data[i], 'ACOMP', filtroUnidad);
+    if (p !== null && p > 0) {
+      sumAcomp += p; countAcomp++;
+      if (p >= 18) distAcomp.muyBueno++;
+      else if (p >= 14) distAcomp.bueno++;
+      else if (p >= 11) distAcomp.regular++;
+      else distAcomp.deficiente++;
+    } else {
+      distAcomp.sinEvaluar++;
+    }
+  }
+
+  var avgAcomp = countAcomp > 0 ? (sumAcomp / countAcomp).toFixed(2) : '-';
+
+  // 1. KPIs Acomp
+  var kpisEl = document.getElementById('bi-kpis-acomp');
+  if (kpisEl) {
+    kpisEl.innerHTML = 
+      buildKpiCard('Acompañamientos Registrados', countAcomp + ' <span style="font-size:13px; font-weight:600; color:#64748b;">/ ' + total + '</span>', 'fa-chalkboard-user', '#f59e0b') +
+      buildKpiCard('Promedio Global Acompañamiento', avgAcomp, 'fa-star', '#f59e0b', '/20');
+  }
+
+  // 2. Gráficos
+  createOrUpdateBiChart('distAcomp', 'chartBiDistAcomp', {
+    type: 'doughnut',
+    data: {
+      labels: ['Muy Bueno (18-20)', 'Bueno (14-17)', 'Regular (11-13)', 'Deficiente (<11)', 'Sin Evaluar'],
+      datasets: [{
+        data: [distAcomp.muyBueno, distAcomp.bueno, distAcomp.regular, distAcomp.deficiente, distAcomp.sinEvaluar],
+        backgroundColor: [BI_COLORS.muyBueno, BI_COLORS.bueno, BI_COLORS.regular, BI_COLORS.deficiente, BI_COLORS.gray]
+      }]
+    },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
+  });
+
+  var dimsAcompGranular = [
+    "1. Propósito", "2. Saberes", "3. Conflicto", "4. Contenido", 
+    "5. Aplicación", "6. Estrategias", "7. Recursos", "8. Comunicación", 
+    "9. Capacidades", "10. Evaluación", "11. Cierre"
+  ];
+  var acompValsFull = [0,1,2,3,4,5,6,7,8,9,10].map(function(i) {
+    return calcularPromedioDimension(data, [i], 'criteriosAcomp');
+  });
+
+  createOrUpdateBiChart('radarAcomp', 'chartBiRadarAcomp', {
+    type: 'radar',
+    data: {
+      labels: dimsAcompGranular,
+      datasets: [{
+        label: 'Promedio Indicador (1-4)',
+        data: acompValsFull,
+        backgroundColor: 'rgba(245, 158, 11, 0.2)',
+        borderColor: '#f59e0b',
+        pointBackgroundColor: '#f59e0b'
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        r: {
+          min: 0,
+          max: 4,
+          pointLabels: {
+            font: { size: 10 },
+            callback: function(label) {
+              if (label && label.length > 15) {
+                var words = label.split(' ');
+                var lines = [], cur = '';
+                for (var w = 0; w < words.length; w++) {
+                  if ((cur + ' ' + words[w]).length > 15) {
+                    if (cur) lines.push(cur);
+                    cur = words[w];
+                  } else {
+                    cur = cur ? cur + ' ' + words[w] : words[w];
+                  }
+                }
+                if (cur) lines.push(cur);
+                return lines;
+              }
+              return label;
+            }
+          }
+        }
+      },
+      plugins: { legend: { display: false } }
+    }
+  });
+
+  // 3. Leyenda Acomp
+  renderLeyendaAcomp(data);
+
+  // 4. Dimensiones por mejorar y Críticos
+  renderDimensionesPorMejorarAcomp(data);
+  renderListaCritica(data, 'bi-criticos-acomp', 'ACOMP', filtroUnidad);
+}
+
+function renderLeyendaAcomp(data) {
+  var el = document.getElementById('bi-leyenda-acomp');
+  if (!el) return;
+
+  var dimsA = [
+    { num: 'I', nombre: 'Momento de Inicio', idx: [0, 1, 2], sub: ['1. Orientación', '2. Saberes previos', '3. Conflicto cognitivo'] },
+    { num: 'II', nombre: 'Momento de Desarrollo', idx: [3, 4, 5, 6, 7, 8], sub: ['4. Contenido', '5. Aplicación', '6. Estrategias', '7. Recursos', '8. Comunicación', '9. Capac. Cognitivas'] },
+    { num: 'III', nombre: 'Momento de Cierre', idx: [9, 10], sub: ['10. Evaluación', '11. Extensión'] }
+  ];
+
+  var html = '';
+  for (var i = 0; i < dimsA.length; i++) {
+    var d = dimsA[i];
+    var prom = calcularPromedioDimension(data, d.idx, 'criteriosAcomp');
+    var badgeColor = prom >= 3.5 ? '#10b981' : prom >= 2.5 ? '#3b82f6' : prom >= 1.5 ? '#f59e0b' : '#ef4444';
+
+    html += '<div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px 14px;">' +
+      '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">' +
+        '<span style="font-weight:800; font-size:12px; color:#1e293b;">Dimensión ' + d.num + ': ' + d.nombre + '</span>' +
+        '<span style="font-weight:800; font-size:12px; color:' + badgeColor + ';">' + (prom > 0 ? prom.toFixed(2) : '-') + '</span>' +
+      '</div>' +
+      '<div style="display:flex; flex-wrap:wrap; gap:4px;">';
+
+    for (var s = 0; s < d.sub.length; s++) {
+      var subIdx = d.idx[s];
+      var subProm = calcularPromedioDimension(data, [subIdx], 'criteriosAcomp');
+      var fullLabel = NOMBRES_COMPLETOS_ACOMP[subIdx] || d.sub[s];
+      html += '<span style="font-size:10px; background:#fff; border:1px solid #cbd5e1; border-radius:4px; padding:2px 6px; color:#475569; display:inline-flex; align-items:center; gap:4px;">' +
+        fullLabel + ' <strong style="color:#0f172a;">' + (subProm > 0 ? subProm.toFixed(1) : '-') + '</strong></span>';
+    }
+
+    html += '</div></div>';
+  }
+
+  el.innerHTML = html;
+}
+
+function renderDimensionesPorMejorarAcomp(data) {
+  var el = document.getElementById('bi-mejorar-acomp');
+  if (!el) return;
+
+  var criticosPorCriterio = {};
+  for (var c = 0; c < 11; c++) {
+    criticosPorCriterio[c] = 0;
+  }
+
+  var totalAsignaturasConNotas = 0;
+  for (var i = 0; i < data.length; i++) {
+    var arr = data[i].criteriosAcomp;
+    if (!arr) continue;
+    var tieneNota = false;
+    for (var c = 0; c < 11; c++) {
+      var val = arr[c];
+      if (val !== null && val !== undefined && val !== '' && !isNaN(val) && Number(val) > 0) {
+        tieneNota = true;
+        if (Number(val) <= 2) {
+          criticosPorCriterio[c]++;
+        }
+      }
+    }
+    if (tieneNota) totalAsignaturasConNotas++;
+  }
+
+  var rankingCriterios = [];
+  for (var c = 0; c < 11; c++) {
+    if (criticosPorCriterio[c] > 0) {
+      var nombre = NOMBRES_COMPLETOS_ACOMP[c] || biTitlesAcomp[c] || biHeadersAcomp[c] || ('Indicador ' + (c+1));
+      rankingCriterios.push({
+        idx: c,
+        nombre: nombre,
+        count: criticosPorCriterio[c],
+        pct: totalAsignaturasConNotas > 0 ? Math.round((criticosPorCriterio[c] / totalAsignaturasConNotas) * 100) : 0
+      });
+    }
+  }
+
+  rankingCriterios.sort(function(a, b) { return b.count - a.count; });
+  var topCriticos = rankingCriterios.slice(0, 6);
+
+  if (topCriticos.length === 0) {
+    el.innerHTML = '<p style="color:#10b981; font-size:12px; font-weight:600; margin:0;"><i class="fa-solid fa-circle-check" style="margin-right:6px;"></i>¡Excelente! No se registran indicadores en nivel deficiente (notas 1 o 2) en esta selección.</p>';
+    return;
+  }
+
+  var html = '<div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:12px;">';
+  for (var k = 0; k < topCriticos.length; k++) {
+    var item = topCriticos[k];
+    html += '<div style="background:#fef2f2; border:1px solid #fecaca; border-radius:8px; padding:10px 12px; display:flex; flex-direction:column; justify-content:space-between;">' +
+      '<div style="font-size:11px; font-weight:700; color:#991b1b; margin-bottom:6px; line-height:1.3;">' + item.nombre + '</div>' +
+      '<div style="display:flex; justify-content:space-between; align-items:center; font-size:11px;">' +
+        '<span style="color:#b91c1c; font-weight:600;">' + item.count + ' docentes</span>' +
+        '<span style="background:#ef4444; color:#fff; font-weight:800; font-size:10px; padding:2px 6px; border-radius:10px;">' + item.pct + '%</span>' +
+      '</div>' +
+    '</div>';
+  }
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+function renderListaCritica(data, containerId, tipoModulo, filtroUnidad) {
+  var container = document.getElementById(containerId);
+  if (!container) return;
+
+  var criticos = [];
+  for (var i = 0; i < data.length; i++) {
+    var row = data[i];
+    var arr = tipoModulo === 'LMS' ? row.criteriosLMS : row.criteriosAcomp;
+    if (!arr) continue;
+
+    var numDeficientes = 0;
+    var defNombres = [];
+    var limit = tipoModulo === 'LMS' ? 38 : 11;
+
+    for (var c = 0; c < limit; c++) {
+      if (!isIndexInUnidad(c, filtroUnidad, tipoModulo === 'ACOMP')) continue;
+      
+      var val = arr[c];
+      if (val !== null && val !== undefined && val !== '' && !isNaN(val) && Number(val) > 0 && Number(val) <= 2) {
+        numDeficientes++;
+        var label = tipoModulo === 'LMS' ? (biTitlesLMS[c] || biHeadersLMS[c]) : (NOMBRES_COMPLETOS_ACOMP[c] || biTitlesAcomp[c] || biHeadersAcomp[c]);
+        defNombres.push(label || ('Criterio ' + (c+1)));
+      }
+    }
+
+    if (numDeficientes > 0) {
+      criticos.push({
+        doc: row,
+        count: numDeficientes,
+        deficiencias: defNombres
+      });
+    }
+  }
+
+  criticos.sort(function(a, b) { return b.count - a.count; });
+
+  var titulo = tipoModulo === 'LMS' ? 'Docentes con Oportunidad de Mejora LMS' : 'Docentes con Oportunidad de Mejora en Acompañamiento';
+  var icon = tipoModulo === 'LMS' ? 'fa-laptop-code' : 'fa-chalkboard-user';
+
+  var html = '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">' +
+      '<h6 style="margin:0; font-size:14px; font-weight:700; color:#b91c1c;"><i class="fa-solid ' + icon + '" style="margin-right:8px;"></i>' + titulo + ' (' + criticos.length + ')</h6>' +
+      '<span style="font-size:11px; color:#64748b;">Listado focalizado para seguimiento</span>' +
+    '</div>';
+
+  if (criticos.length === 0) {
+    html += '<p style="color:#10b981; font-size:12px; font-weight:600; margin:0;"><i class="fa-solid fa-check-circle" style="margin-right:6px;"></i>No hay docentes con notas 1 o 2 en esta selección.</p>';
+  } else {
+    html += '<div style="display:flex; flex-direction:column; gap:8px; max-height:280px; overflow-y:auto; padding-right:4px;">';
+    for (var i = 0; i < criticos.length; i++) {
+      var item = criticos[i];
+      html += '<div style="background:#fff; border:1px solid #fecaca; border-left:4px solid #ef4444; border-radius:6px; padding:8px 12px; display:flex; justify-content:space-between; align-items:center;">' +
+        '<div style="max-width:75%;">' +
+          '<div style="font-weight:700; font-size:12px; color:#1e293b;">' + item.doc.nombre + ' <span style="font-size:10px; font-weight:400; color:#64748b;">(' + item.doc.programa + ')</span></div>' +
+          '<div style="font-size:10px; color:#dc2626; margin-top:2px;">' + item.deficiencias.slice(0, 3).join(' • ') + (item.deficiencias.length > 3 ? ' (+' + (item.deficiencias.length - 3) + ' más)' : '') + '</div>' +
+        '</div>' +
+        '<span style="background:#fef2f2; color:#dc2626; font-size:11px; font-weight:800; padding:2px 8px; border-radius:12px; border:1px solid #fca5a5;">' + item.count + ' obs.</span>' +
+      '</div>';
+    }
+    html += '</div>';
+  }
+
+  container.innerHTML = html;
+}
+
+/** GENERADOR DE CARDS DE KPI (HTML INLINE) */
+function buildKpiCard(title, value, icon, color, suffix) {
+  return '<div style="background:#fff; border-radius:12px; border:1px solid #e2e8f0; padding:16px 20px; display:flex; align-items:center; gap:16px; box-shadow:0 1px 3px rgba(0,0,0,0.04);">' +
+    '<div style="width:44px; height:44px; border-radius:10px; background:' + color + '15; color:' + color + '; display:flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0;">' +
+      '<i class="fa-solid ' + icon + '"></i>' +
+    '</div>' +
+    '<div>' +
+      '<p style="margin:0; font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:0.5px;">' + title + '</p>' +
+      '<h3 style="margin:2px 0 0; font-size:20px; font-weight:800; color:#1e293b;">' + value + (suffix ? '<span style="font-size:12px; font-weight:600; color:#94a3b8;">' + suffix + '</span>' : '') + '</h3>' +
+    '</div>' +
+  '</div>';
+}
+
+/** EXPORTADOR A PDF */
+function descargarTablaPdfPorPrograma() {
+  var elOriginal = document.getElementById('bi-print-section');
+  if (!elOriginal) return;
+
+  var selCoord = document.getElementById('filtroBiCoordinador');
+  var selProg = document.getElementById('filtroBiPrograma');
+  var selUnidad = document.getElementById('filtroBiUnidad');
+
+  var nombreCoord = selCoord && selCoord.value !== 'TODOS' ? selCoord.value : 'Todos los Coordinadores';
+  var nombreProg = selProg && selProg.value !== 'TODOS' ? selProg.value : 'Todos los Programas';
+  var nombreUnidad = selUnidad && selUnidad.value !== 'TODAS' ? selUnidad.options[selUnidad.selectedIndex].text : 'Todas las Unidades';
+
+  var contenedorPDF = document.createElement('div');
+  contenedorPDF.style.padding = '20px';
+  contenedorPDF.style.background = '#ffffff';
+  contenedorPDF.style.fontFamily = 'Inter, sans-serif';
+
+  var headerPDF = '<div style="border-bottom:2px solid #3b82f6; padding-bottom:12px; margin-bottom:20px;">' +
+    '<div style="display:flex; justify-content:space-between; align-items:center;">' +
+      '<div>' +
+        '<h2 style="margin:0; font-size:18px; font-weight:800; color:#1e293b;">Reporte de Desempeño Docente por Programa</h2>' +
+        '<p style="margin:4px 0 0; font-size:11px; color:#64748b;">Sistema de Monitoreo de Calidad Académica USMP</p>' +
+      '</div>' +
+      '<div style="text-align:right; font-size:10px; color:#64748b;">' +
+        '<strong>Fecha:</strong> ' + new Date().toLocaleDateString() + '<br>' +
+        '<strong>Filtro Unidad:</strong> ' + nombreUnidad + '<br>' +
+        '<strong>Coordinador:</strong> ' + nombreCoord + '<br>' +
+        '<strong>Programa:</strong> ' + nombreProg +
+      '</div>' +
+    '</div>' +
+  '</div>';
+
+  contenedorPDF.innerHTML = headerPDF;
+
+  var clonTabla = elOriginal.cloneNode(true);
+  var rankEl = clonTabla.querySelector('#bi-rankings-general');
+  if (rankEl) rankEl.style.display = 'none';
+
+  contenedorPDF.appendChild(clonTabla);
+  document.body.appendChild(contenedorPDF);
 
   var opt = {
-    margin:       10,
-    filename:     'Desempeno_Detallado_Por_Programa_USMP.pdf',
-    image:        { type: 'jpeg', quality: 0.98 },
-    html2canvas:  { scale: 2, useCORS: true },
-    jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    margin: [10, 10, 10, 10],
+    filename: 'Desempeno_Detallado_Por_Programa_' + (selUnidad ? selUnidad.value : 'TODAS') + '.pdf',
+    image: { type: 'jpeg', quality: 0.98 },
+    html2canvas: { scale: 2, useCORS: true },
+    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
   };
-  
-  html2pdf().set(opt).from(element).save().then(function() {
-    if(btn) {
-      btn.style.display = 'flex';
-      btn.innerHTML = '<i class="fa-solid fa-file-pdf"></i> Descargar PDF';
-      btn.disabled = false;
-      btn.style.opacity = '1';
-    }
-  }).catch(function(e) {
-    console.error("Error PDF:", e);
-    if(btn) {
-      btn.style.display = 'flex';
-      btn.innerHTML = '<i class="fa-solid fa-file-pdf"></i> Descargar PDF';
-      btn.disabled = false;
-      btn.style.opacity = '1';
-    }
-    alert("Ocurrió un error al generar el PDF.");
-  });
+
+  if (window.html2pdf) {
+    window.html2pdf().set(opt).from(contenedorPDF).save().then(function() {
+      document.body.removeChild(contenedorPDF);
+    });
+  } else {
+    var script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+    script.onload = function() {
+      window.html2pdf().set(opt).from(contenedorPDF).save().then(function() {
+        document.body.removeChild(contenedorPDF);
+      });
+    };
+    document.head.appendChild(script);
+  }
 }
 
-// END OF FILE
+function descargarTablaPdfLmsPorPrograma() {
+  var elOriginal = document.getElementById('bi-print-section-lms');
+  if (!elOriginal) return;
+
+  var selCoord = document.getElementById('filtroBiCoordinador');
+  var selProg = document.getElementById('filtroBiPrograma');
+  var selUnidad = document.getElementById('filtroBiUnidad');
+
+  var nombreCoord = selCoord && selCoord.value !== 'TODOS' ? selCoord.value : 'Todos los Coordinadores';
+  var nombreProg = selProg && selProg.value !== 'TODOS' ? selProg.value : 'Todos los Programas';
+  var nombreUnidad = selUnidad && selUnidad.value !== 'TODAS' ? selUnidad.options[selUnidad.selectedIndex].text : 'Todas las Unidades';
+
+  var contenedorPDF = document.createElement('div');
+  contenedorPDF.style.padding = '20px';
+  contenedorPDF.style.background = '#ffffff';
+  contenedorPDF.style.fontFamily = 'Inter, sans-serif';
+
+  var headerPDF = '<div style="border-bottom:2px solid #06b6d4; padding-bottom:12px; margin-bottom:20px;">' +
+    '<div style="display:flex; justify-content:space-between; align-items:center;">' +
+      '<div>' +
+        '<h2 style="margin:0; font-size:18px; font-weight:800; color:#1e293b;">Reporte de Desempeño Docente LMS por Programa</h2>' +
+        '<p style="margin:4px 0 0; font-size:11px; color:#64748b;">Sistema de Monitoreo de Calidad Académica USMP (Módulo LMS)</p>' +
+      '</div>' +
+      '<div style="text-align:right; font-size:10px; color:#64748b;">' +
+        '<strong>Fecha:</strong> ' + new Date().toLocaleDateString() + '<br>' +
+        '<strong>Filtro Unidad:</strong> ' + nombreUnidad + '<br>' +
+        '<strong>Coordinador:</strong> ' + nombreCoord + '<br>' +
+        '<strong>Programa:</strong> ' + nombreProg +
+      '</div>' +
+    '</div>' +
+  '</div>';
+
+  contenedorPDF.innerHTML = headerPDF;
+
+  var clonTabla = elOriginal.cloneNode(true);
+  contenedorPDF.appendChild(clonTabla);
+  document.body.appendChild(contenedorPDF);
+
+  var opt = {
+    margin: [10, 10, 10, 10],
+    filename: 'Desempeno_Detallado_LMS_Por_Programa_' + (selUnidad ? selUnidad.value : 'TODAS') + '.pdf',
+    image: { type: 'jpeg', quality: 0.98 },
+    html2canvas: { scale: 2, useCORS: true },
+    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+  };
+
+  if (window.html2pdf) {
+    window.html2pdf().set(opt).from(contenedorPDF).save().then(function() {
+      document.body.removeChild(contenedorPDF);
+    });
+  } else {
+    var script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+    script.onload = function() {
+      window.html2pdf().set(opt).from(contenedorPDF).save().then(function() {
+        document.body.removeChild(contenedorPDF);
+      });
+    };
+    document.head.appendChild(script);
+  }
+}
+
+console.log('Script JS_BI loaded successfully');
 </script>

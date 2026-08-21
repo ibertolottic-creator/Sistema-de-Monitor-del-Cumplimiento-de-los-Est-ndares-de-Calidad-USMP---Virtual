@@ -1,145 +1,285 @@
 <!-- ==================== JS START: MÓDULO COORDINADORES ==================== -->
 <script>
+    window.showToast = window.showToast || function(title, msg, type) {
+      var toast = document.getElementById('global-toast');
+      var tTitle = document.getElementById('global-toast-title');
+      var tMsg = document.getElementById('global-toast-msg');
+      var tIcon = document.getElementById('global-toast-icon');
+      if (toast && tTitle && tMsg) {
+        tTitle.innerText = title || '';
+        tMsg.innerText = msg || '';
+        if (tIcon) {
+          if (type === 'success') tIcon.innerHTML = '<i class="fa-solid fa-circle-check text-green-500"></i>';
+          else if (type === 'error') tIcon.innerHTML = '<i class="fa-solid fa-circle-xmark text-red-500"></i>';
+          else if (type === 'warning') tIcon.innerHTML = '<i class="fa-solid fa-triangle-exclamation text-amber-500"></i>';
+          else tIcon.innerHTML = '<i class="fa-solid fa-circle-info text-blue-500"></i>';
+        }
+        toast.classList.remove('translate-x-full', 'opacity-0');
+        setTimeout(function() { toast.classList.add('translate-x-full', 'opacity-0'); }, 4000);
+      } else {
+        console.log('[' + (type || 'info').toUpperCase() + '] ' + title + ': ' + msg);
+      }
+    };
+
     // Variables Globales
     var CURRENT_TAB = 'ALL';
+    var CURRENT_WEEK_TAB = 'ALL';
     var RAW_COORD_DATA = [];
     var chartCoordLmsInst = null;
     var chartCoordAcompInst = null;
     var chartCoordTiemposInst = null;
+    var chartCoordTiemposTotalInst = null;
+    var chartCoordTiemposDedicInst = null;
     var chartCoordTraficoInst = null;
     var dtCoordAsignaturasInst = null;
-    
-    // Configuración Modal
-    const COORD_MODAL_DATA = {
-        'lms': {
-            title: 'Avance de Monitoreo: LMS',
-            icon: 'fa-laptop-code',
-            color: 'text-sky-500',
-            content: `
-                <p><strong>¿Qué mide?</strong> El porcentaje de aulas virtuales que ya fueron supervisadas y calificadas en la plataforma Moodle.</p>
-                <div class="bg-blue-50 border-l-4 border-blue-400 p-4 mt-2">
-                    <p class="text-blue-700"><strong>Fórmula:</strong> (Aulas con Calificación Vig. Final Mayor a Cero / Total de Aulas Asignadas) * 100%</p>
-                </div>
-                <ul class="list-disc pl-5 mt-3 space-y-1">
-                    <li>Un 100% indica que todas sus asignaturas virtuales están listas.</li>
-                    <li>Las Asignaturas en estado "Proceso" no suman puntos de Avance.</li>
-                </ul>
-            `
-        },
-        'acomp': {
-            title: 'Avance de Monitoreo: Acompañamiento',
-            icon: 'fa-chalkboard-user',
-            color: 'text-amber-500',
-            content: `
-                <p><strong>¿Qué mide?</strong> El porcentaje de visitas o acompañamientos pedagógicos sincrónicos finalizados.</p>
-                <div class="bg-amber-50 border-l-4 border-amber-400 p-4 mt-2">
-                    <p class="text-amber-700"><strong>Regla:</strong> Aulas con Rúbrica de Acompañamiento Generada y Evaluada completamente.</p>
-                </div>
-                <p class="mt-3">Para alcanzar la meta de Desempeño Efectivo, este indicador debe subir equitativamente junto al Monitoreo LMS.</p>
-            `
-        },
-        'tiempos': {
-            title: 'Tiempos Promedio de Evaluación',
-            icon: 'fa-stopwatch',
-            color: 'text-pink-500',
-            content: `
-                <p><strong>¿Qué mide?</strong> Registra cuántos minutos efectivos demoró un coordinador revisando una asignatura.</p>
-                <div class="bg-pink-50 border-l-4 border-pink-400 p-4 mt-2 text-sm">
-                    <p class="text-pink-700 mb-1"><strong>LMS:</strong> Se suman los minutos exactos precalculados en las bitácoras semanales (Ej. <em>audit_time_s1 + s2...</em>).</p>
-                    <p class="text-pink-700 mt-2"><strong>Acompañamiento:</strong> Se calcula restando la hora de calificacion del *último* criterio contra el *primer* criterio marcado.</p>
-                </div>
-                <ul class="list-disc pl-5 mt-3 space-y-1 text-xs">
-                    <li>Alerta de evaluaciones "express" (Ej. Menos de 1 Minuto) que indican automatismos sin rigor.</li>
-                    <li>Ayuda a balancear el nivel de tiempo que cada coordinador invierte en sus aulas.</li>
-                </ul>
-            `
-        },
-        'trafico': {
-            title: 'Tráfico Operativo: Accesos vs Comunicaciones',
-            icon: 'fa-network-wired',
-            color: 'text-green-500',
-            content: `
-                <p><strong>¿Qué mide?</strong> El esfuerzo de gestión manual que hace el equipo para empujar el avance.</p>
-                <ul class="list-disc pl-5 mt-3 space-y-2">
-                    <li><strong class="text-gray-800">Hits Aula (Azul):</strong> Número de clics profundos y navegaciones dentro del Aula Virtual Moodle del docente.</li>
-                    <li><strong class="text-gray-800">Emails (Naranja):</strong> Cantidad de Correos Institucionales Automáticos despachados vía el Robot de Reportes.</li>
-                    <li><strong class="text-gray-800">WhatsApp (Verde):</strong> Cantidad de Mensajes Vía API mandados al celular personal de los Docentes.</li>
-                </ul>
-                <div class="bg-gray-100 border-l-4 border-gray-400 p-3 mt-3 text-xs italic">
-                    "A mayor tráfico y baja tasa de correos, significa alta carga presencial/LMS sin necesidad de alarmas de advertencia."
-                </div>
-            `
+
+    function initCoordinadores(forceSync) {
+        if (typeof forceSync !== 'boolean') forceSync = false;
+        
+        var ids = ['home-view','module-view','module-acomp','assignment-view','resultados-view','module-dashboard-bi'];
+        for (var i = 0; i < ids.length; i++) {
+          var el = document.getElementById(ids[i]);
+          if (el) { el.style.display = 'none'; el.classList.add('hidden'); }
         }
-    };
-  
-    function initCoordinadores() {
-        document.getElementById('coord-content').style.display = 'none';
+        var coordView = document.getElementById('coordinadores-view');
+        if (coordView) {
+          coordView.classList.remove('hidden');
+          coordView.style.display = 'flex';
+        }
+
+        var content = document.getElementById('coord-content');
+        if (content) content.style.display = 'none';
         const loader = document.getElementById('coord-loader');
-        loader.style.display = 'flex';
+        if (loader) loader.style.display = 'flex';
         
         const btn = document.getElementById('btnRecargarCoord');
         if(btn) {
-            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Trabajando...';
+            btn.innerHTML = forceSync 
+                 ? '<i class="fa-solid fa-cloud-arrow-down fa-beat"></i> Sincronizando BI...'
+                 : '<i class="fa-solid fa-spinner fa-spin"></i> Trabajando...';
             btn.disabled = true;
         }
   
         google.script.run
             .withSuccessHandler(onCoordinadoresSuccess)
             .withFailureHandler(err => {
-                loader.style.display = 'none';
+                if (loader) loader.style.display = 'none';
                 if(btn) {
                     btn.innerHTML = '<i class="fa-solid fa-sync-alt"></i> Intentar de Nuevo';
                     btn.disabled = false;
                 }
                 showToast("Error de Servidor", err.toString(), "error");
             })
-            .getMetricasCoordinadores();
+            .getMetricasCoordinadores(forceSync);
+    }
+  
+    // Módulo de Snapshot de Tiempos
+    function guardarSnapshotCoordinadores() {
+        if (!RAW_COORD_DATA || RAW_COORD_DATA.length === 0) {
+            showToast("Atención", "No hay datos para guardar. Actualice el dashboard primero.", "warning");
+            return;
+        }
+
+        const btn = document.getElementById('btnGuardarSnapshot');
+        if(btn) {
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Guardando...';
+            btn.disabled = true;
+        }
+
+        // Usamos la misma estructura de coordinadores reducida del Map-Reduce
+        let coordMap = {};
+        RAW_COORD_DATA.forEach(r => {
+            if(!coordMap[r.coord]) {
+                coordMap[r.coord] = {
+                    coord: r.coord, total: 0,
+                    lmsAprobados: 0, lmsProceso: 0, acompAprobados: 0, acompProceso: 0,
+                    hits: 0, mails: 0, wa: 0, audits: 0, auditsLms: 0, auditsAcp: 0,
+                    // Promedios Antiguos
+                    auditLmsTotal: 0, auditLmsCount: 0,
+                    // Tiempos Raw Clustering
+                    rawLmsW: [[], [], [], []], rawAcp: []
+                };
+            }
+            let c = coordMap[r.coord];
+            c.total++;
+            c.hits += r.h; c.mails += r.m; c.wa += r.w;
+            c.auditsLms += r.a_lms; c.auditsAcp += r.a_acp;
+            c.audits = c.auditsLms + c.auditsAcp;
+
+            if(r.s_lms > 0) c.lmsAprobados++; else if(r.startedLms) c.lmsProceso++;
+            if(r.s_acp > 0) c.acompAprobados++; else if(r.startedAcp) c.acompProceso++;
+            
+            if (r.audit_lms > 0) { c.auditLmsTotal += r.audit_lms; c.auditLmsCount++; }
+            
+            if (r.raw_lms_w) {
+                for (let w=0; w<6; w++) {
+                    if (r.raw_lms_w[w] && r.raw_lms_w[w].length > 0) c.rawLmsW[w].push(...r.raw_lms_w[w]);
+                }
+            }
+            if (r.raw_acp && r.raw_acp.length > 0) c.rawAcp.push(...r.raw_acp);
+        });
+
+        const GAP_SESSION_MS = 20 * 60 * 1000;
+        const BASE_CRITERIA_MS = 2 * 60 * 1000;
+        
+        let dumpData = Object.values(coordMap).map(c => {
+            // Calcular Clusters Finales antes de enviar (Sesiones <= 20 min, exclusión tiempos muertos > 30 min)
+            c.lmsTsTotal = 0;
+            for (let w=0; w<6; w++) {
+                let bag = c.rawLmsW[w];
+                if (bag && bag.length > 0) {
+                    let sorted = bag.filter(t => typeof t === 'number' && !isNaN(t)).sort((a,b) => a - b);
+                    let totalMs = 0;
+                    if (sorted.length > 0) {
+                        totalMs += BASE_CRITERIA_MS;
+                        let lastValidTs = sorted[0];
+                        for (let i = 1; i < sorted.length; i++) {
+                            let diff = sorted[i] - lastValidTs;
+                            if (diff <= 0) continue;
+                            if (diff <= GAP_SESSION_MS) {
+                                totalMs += diff;
+                                lastValidTs = sorted[i];
+                            } else {
+                                totalMs += BASE_CRITERIA_MS;
+                                lastValidTs = sorted[i];
+                            }
+                        }
+                    }
+                    c.lmsTsTotal += (totalMs / 60000);
+                }
+            }
+            
+            c.acpTsTotal = 0;
+            if (c.rawAcp && c.rawAcp.length > 0) {
+                let sortedAcp = c.rawAcp.filter(t => typeof t === 'number' && !isNaN(t)).sort((a,b) => a - b);
+                let totalMsAcp = 0;
+                if (sortedAcp.length > 0) {
+                    totalMsAcp += BASE_CRITERIA_MS;
+                    let lastValidTsAcp = sortedAcp[0];
+                    for (let i = 1; i < sortedAcp.length; i++) {
+                         let diff = sortedAcp[i] - lastValidTsAcp;
+                         if (diff <= 0) continue;
+                         if (diff <= GAP_SESSION_MS) {
+                             totalMsAcp += diff;
+                             lastValidTsAcp = sortedAcp[i];
+                         } else {
+                             totalMsAcp += BASE_CRITERIA_MS;
+                             lastValidTsAcp = sortedAcp[i];
+                         }
+                    }
+                }
+                c.acpTsTotal = totalMsAcp / 60000;
+            }
+            
+            c.avgLms = c.auditLmsCount > 0 ? c.auditLmsTotal / c.auditLmsCount : 0;
+            c.avgAcomp = c.total > 0 ? c.acpTsTotal / c.total : 0;
+            
+            // Delete raw properties to save bandwidth
+            delete c.rawLmsW;
+            delete c.rawAcp;
+            delete c.auditLmsTotal;
+            delete c.auditLmsCount;
+            
+            return c;
+        });
+
+        google.script.run
+            .withSuccessHandler(res => {
+                if(btn) {
+                    btn.innerHTML = '<i class="fa-solid fa-check"></i> Listo';
+                    setTimeout(() => {
+                        btn.innerHTML = '<i class="fa-solid fa-database"></i> Guardar Snapshot';
+                        btn.disabled = false;
+                    }, 3000);
+                }
+                if(res.success) {
+                    showToast("Snapshot Guardado", res.message, "success");
+                } else {
+                    showToast("Error BD", res.message, "error");
+                }
+            })
+            .withFailureHandler(err => {
+                if(btn) {
+                    btn.innerHTML = '<i class="fa-solid fa-database"></i> Guardar Snapshot';
+                    btn.disabled = false;
+                }
+                showToast("Error de Conexión", err.toString(), "error");
+            })
+            .saveCoordinatorSnapshot(JSON.stringify(dumpData));
     }
   
     function onCoordinadoresSuccess(response) {
-        if (!response.success) {
-            document.getElementById('coord-loader').style.display = 'none';
-            document.getElementById('btnRecargarCoord').disabled = false;
-            document.getElementById('btnRecargarCoord').innerHTML = '<i class="fa-solid fa-sync-alt"></i> Actualizar';
-            showToast("Advertencia BI", response.message, "warning");
-            return;
+        try {
+            if (!response || !response.success) {
+                var msg = response ? response.message : "El servidor devolvió una respuesta vacía.";
+                document.getElementById('coord-loader').style.display = 'none';
+                var btnRec = document.getElementById('btnRecargarCoord');
+                if (btnRec) {
+                    btnRec.disabled = false;
+                    btnRec.innerHTML = '<i class="fa-solid fa-sync-alt"></i> Actualizar';
+                }
+                showToast("Advertencia BI", msg, "warning");
+                return;
+            }
+      
+            RAW_COORD_DATA = response.data || [];
+            
+            // Populate Filtros
+            var setProgs = new Set();
+            var setCoords = new Set();
+            
+            RAW_COORD_DATA.forEach(r => {
+                if (r) {
+                    if(r.prog) setProgs.add(r.prog);
+                    if(r.coord) setCoords.add(r.coord);
+                }
+            });
+
+            // Populate Dropdowns
+            const cboProg = document.getElementById('filtroCoordPrograma');
+            if (cboProg) {
+                cboProg.innerHTML = '<option value="TODOS" selected>Todos los Programas</option>';
+                [...setProgs].sort().forEach(p => cboProg.add(new Option(p, p)));
+            }
+
+            const cboCoord = document.getElementById('filtroCoordAlias');
+            if (cboCoord) {
+                cboCoord.innerHTML = '<option value="TODOS" selected>Todos los Coordinadores</option>';
+                [...setCoords].sort().forEach(c => cboCoord.add(new Option(c, c)));
+            }
+
+            // Fill Tab logic
+            const tabsCont = document.getElementById('coord-tabs-container');
+            if (tabsCont) tabsCont.style.display = 'block';
+
+            // Render Initial Dashboard
+            renderCoordinadoresDashboard();
+      
+            const ldr = document.getElementById('coord-loader');
+            if (ldr) ldr.style.display = 'none';
+            const cnt = document.getElementById('coord-content');
+            if (cnt) cnt.style.display = 'flex';
+            
+            const btn = document.getElementById('btnRecargarCoord');
+            if(btn) {
+                btn.innerHTML = '<i class="fa-solid fa-sync-alt"></i> Actualizar Front';
+                btn.disabled = false;
+            }
+            showToast("Métricas Analizadas", "Data Lake de Gestión descargado exitosamente.", "success");
+        } catch (err) {
+            console.error("Crash in onCoordinadoresSuccess:", err);
+            const ldr = document.getElementById('coord-loader');
+            if (ldr) ldr.style.display = 'none';
+            alert("Crash en Frontend (onCoordinadoresSuccess): " + err.toString() + "\nStack: " + err.stack);
         }
-  
-        RAW_COORD_DATA = response.data || [];
-        
-        // Populate Filtros
-        var setProgs = new Set();
-        var setCoords = new Set();
-        
-        RAW_COORD_DATA.forEach(r => {
-            if(r.prog) setProgs.add(r.prog);
-            if(r.coord) setCoords.add(r.coord);
-        });
+    }
 
-        // Populate Dropdowns
-        const cboProg = document.getElementById('filtroCoordPrograma');
-        cboProg.innerHTML = '<option value="TODOS" selected>Todos los Programas</option>';
-        [...setProgs].sort().forEach(p => cboProg.add(new Option(p, p)));
-
-        const cboCoord = document.getElementById('filtroCoordAlias');
-        cboCoord.innerHTML = '<option value="TODOS" selected>Todos los Coordinadores</option>';
-        [...setCoords].sort().forEach(c => cboCoord.add(new Option(c, c)));
-
-        // Fill Tab logic
-        document.getElementById('coord-tabs-container').style.display = 'block';
-
-        // Render Initial Dashboard
-        renderCoordinadoresDashboard();
-  
-        document.getElementById('coord-loader').style.display = 'none';
-        document.getElementById('coord-content').style.display = 'flex';
-        
-        const btn = document.getElementById('btnRecargarCoord');
-        if(btn) {
-            btn.innerHTML = '<i class="fa-solid fa-sync-alt"></i> Actualizar Front';
-            btn.disabled = false;
+    function onChangeFiltroUnidadCoord() {
+        const cbo = document.getElementById('filtroCoordUnidad');
+        if (cbo) {
+            CURRENT_WEEK_TAB = cbo.value;
+            renderCoordinadoresDashboard();
         }
-        showToast("Métricas Analizadas", "Data Lake de Gestión descargado exitosamente.", "success");
     }
 
     /** Módulo de Cambio de Pestañas **/
@@ -150,10 +290,12 @@
         const bgAll = tab === 'ALL' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500';
         const bgLms = tab === 'LMS' ? 'border-blue-500 text-blue-600' : 'border-transparent text-slate-500';
         const bgAcp = tab === 'ACOMP' ? 'border-amber-500 text-amber-600' : 'border-transparent text-slate-500';
+        const bgAnalisis = tab === 'ANALISIS' ? 'border-purple-500 text-purple-600' : 'border-transparent text-slate-500';
         
-        document.getElementById('tabCoordALL').className = `flex align-center pb-2 px-1 border-b-2 font-bold cursor-pointer transition-colors ${bgAll}`;
-        document.getElementById('tabCoordLMS').className = `flex align-center pb-2 px-1 border-b-2 font-bold cursor-pointer transition-colors ${bgLms}`;
-        document.getElementById('tabCoordACOMP').className = `flex align-center pb-2 px-1 border-b-2 font-bold cursor-pointer transition-colors ${bgAcp}`;
+        document.getElementById('tabCoordALL').className = 'flex align-center pb-2 px-1 border-b-2 font-bold cursor-pointer transition-colors ' + bgAll;
+        document.getElementById('tabCoordLMS').className = 'flex align-center pb-2 px-1 border-b-2 font-bold cursor-pointer transition-colors ' + bgLms;
+        document.getElementById('tabCoordACOMP').className = 'flex align-center pb-2 px-1 border-b-2 font-bold cursor-pointer transition-colors ' + bgAcp;
+        document.getElementById('tabCoordANALISIS').className = 'flex align-center pb-2 px-1 border-b-2 font-bold cursor-pointer transition-colors ' + bgAnalisis;
         
         // Repintar Todo
         renderCoordinadoresDashboard();
@@ -176,132 +318,352 @@
      * Map-Reduce en Frontend
      */
     function renderCoordinadoresDashboard() {
-        if(!RAW_COORD_DATA || RAW_COORD_DATA.length === 0) return;
+        if (!RAW_COORD_DATA || RAW_COORD_DATA.length === 0) return;
 
-        const valProg = document.getElementById('filtroCoordPrograma').value;
-        const valCoord = document.getElementById('filtroCoordAlias').value;
+        // 1. Filtrar Data según Tabs
+            let filteredData = RAW_COORD_DATA.filter(r => {
+                if (document.getElementById('filtroCoordPrograma').value !== 'TODOS' && r.prog !== document.getElementById('filtroCoordPrograma').value) return false;
+                if (document.getElementById('filtroCoordAlias').value !== 'TODOS' && r.coord !== document.getElementById('filtroCoordAlias').value) return false;
+                return true;
+            });
 
-        // 1. Filtrar Data Cruda
-        const filteredData = RAW_COORD_DATA.filter(r => {
-            let pass = true;
-            if (valProg !== 'TODOS' && r.prog !== valProg) pass = false;
-            if (valCoord !== 'TODOS' && r.coord !== valCoord) pass = false;
-            return pass;
-        });
+            // 2. Map-Reduce (Agrupación por Coordinador)
+            let coordMap = {};
+            let globals = {
+                lmsAprobados: 0, lmsProceso: 0, 
+                acompAprobados: 0, acompProceso: 0,
+                lmsProgressSum: 0, acompProgressSum: 0,
+                totalAsigs: filteredData.length,
+                evidencias: 0, bursts: 0,
+                lateB: 0, lateW: 0
+            };
 
-        document.getElementById('coordBadgeListado').innerText = `${filteredData.length} registros`;
+            let wkIdx = -1;
+            if (CURRENT_WEEK_TAB === 'S1') wkIdx = 1;
+            else if (CURRENT_WEEK_TAB === 'S2') wkIdx = 2;
+            else if (CURRENT_WEEK_TAB === 'S3') wkIdx = 3;
+            else if (CURRENT_WEEK_TAB === 'S4') wkIdx = 4;
 
-        // 2. Map-Reduce (Agrupar por Coordinador)
-        let coordMap = {};
-        
-        let globals = {
-            totalAsigs: filteredData.length,
-            lmsAprobados: 0,
-            lmsProceso: 0,
-            acompAprobados: 0,
-            acompProceso: 0,
-            evidencias: 0,
-            bursts: 0
-        };
+            filteredData.forEach(r => {
+                if (!coordMap[r.coord]) {
+                    coordMap[r.coord] = {
+                        coord: r.coord,
+                        total: 0,
+                        lmsAprobados: 0, lmsProceso: 0,
+                        lmsProgressSum: 0, acompProgressSum: 0,
+                        // Promedio Min LMS (audit_time clásico)
+                        auditLmsTotal: 0, auditLmsCount: 0,
+                        auditLmsTotalW: [0,0,0,0,0,0], auditLmsCountW: [0,0,0,0,0,0],
+                        // Tiempo Absoluto LMS (Clustering Session-Based)
+                        lmsTsTotal: 0, lmsTsTotalW: [0,0,0,0,0,0], lmsTsCountW: [0,0,0,0,0,0], dedicLmsW: [0,0,0,0,0,0],
+                        rawLmsW: [[], [], [], [], [], []],
+                        rawAcp: [],
+                        acompAprobados: 0, acompProceso: 0, acpTsTotal: 0, acpTsCount: 0,
+                        hits: 0, mails: 0, wa: 0, audits: 0, auditsLms: 0, auditsAcp: 0,
+                        hitsW: [0,0,0,0,0,0], mailsW: [0,0,0,0,0,0], waW: [0,0,0,0,0,0], 
+                        auditsW: [0,0,0,0,0,0], auditsLmsW: [0,0,0,0,0,0], auditsAcpW: [0,0,0,0,0,0],
+                        lateB: 0, lateW: 0, lateTot: 0,
+                        lateLmsW: [0,0,0,0,0,0]
+                    };
+                }
+                let c = coordMap[r.coord];
+                c.total++;
 
-        filteredData.forEach(r => {
-            if(!coordMap[r.coord]) {
-                coordMap[r.coord] = {
-                    coord: r.coord,
-                    total: 0,
-                    lmsAprobados: 0, lmsProceso: 0, lmsTsTotal: 0, lmsTsCount: 0,
-                    acompAprobados: 0, acompProceso: 0, acpTsTotal: 0, acpTsCount: 0,
-                    hits: 0, mails: 0, wa: 0, audits: 0, auditsLms: 0, auditsAcp: 0
-                };
+                // ===== CÁLCULO DE PROGRESO GRANULAR LMS (Por Criterios Reales) =====
+                let lmsProgCourse = 0;
+                let evalW = r.eval_lms_w || [0,0,0,0,0,0];
+                let rawW = r.raw_lms_w || [[],[],[],[],[],[]];
+
+                // Helper para contar evaluados por semana (mayor entre eval_lms_w y timestamps raw)
+                let cntW = (w) => Math.max(evalW[w] || 0, (rawW[w] ? rawW[w].length : 0));
+
+                if (wkIdx === 1) {
+                    let filledS1 = cntW(0) + cntW(1);
+                    lmsProgCourse = filledS1 >= 11 ? 100 : Math.min(100, (filledS1 / 11) * 100);
+                } else if (wkIdx === 2) {
+                    let filledS2 = cntW(2);
+                    lmsProgCourse = filledS2 >= 7 ? 100 : Math.min(100, (filledS2 / 7) * 100);
+                } else if (wkIdx === 3) {
+                    let filledS3 = cntW(3);
+                    let targetS3 = (r.modalidad === 'PRESENCIAL') ? 6 : 7;
+                    lmsProgCourse = filledS3 >= targetS3 ? 100 : Math.min(100, (filledS3 / targetS3) * 100);
+                } else if (wkIdx === 4) {
+                    let filledS4 = cntW(4) + cntW(5);
+                    let targetS4 = (r.modalidad === 'PRESENCIAL') ? 10 : 9;
+                    lmsProgCourse = filledS4 >= targetS4 ? 100 : Math.min(100, (filledS4 / targetS4) * 100);
+                } else {
+                    let filledAll = cntW(0) + cntW(1) + cntW(2) + cntW(3) + cntW(4) + cntW(5);
+                    let hasCompleteScore = (r.s_lms !== null && r.s_lms !== '' && !isNaN(Number(r.s_lms)) && Number(r.s_lms) > 0);
+                    
+                    if (filledAll >= 34 || (hasCompleteScore && filledAll >= 33)) {
+                        lmsProgCourse = 100;
+                    } else {
+                        lmsProgCourse = Math.min(100, (filledAll / 34) * 100);
+                    }
+                }
+
+                c.lmsProgressSum = (c.lmsProgressSum || 0) + lmsProgCourse;
+                globals.lmsProgressSum = (globals.lmsProgressSum || 0) + lmsProgCourse;
+
+                if (lmsProgCourse >= 100) {
+                    c.lmsAprobados++; globals.lmsAprobados++;
+                } else if (lmsProgCourse > 0) {
+                    c.lmsProceso++; globals.lmsProceso++;
+                }
+
+                // ===== CÁLCULO DE PROGRESO GRANULAR ACOMPAÑAMIENTO =====
+                let acompProgCourse = 0;
+                if (r.raw_acp && r.raw_acp.length > 0) {
+                    acompProgCourse = Math.min(100, (r.raw_acp.length / 11) * 100);
+                } else if (r.s_acp !== null && r.s_acp > 0) {
+                    acompProgCourse = 100;
+                }
+                c.acompProgressSum = (c.acompProgressSum || 0) + acompProgCourse;
+                globals.acompProgressSum = (globals.acompProgressSum || 0) + acompProgCourse;
+
+                if (acompProgCourse >= 100) {
+                    c.acompAprobados++; globals.acompAprobados++;
+                } else if (acompProgCourse > 0) {
+                    c.acompProceso++; globals.acompProceso++;
+                }
+
+                // Acumulación de métricas tardías
+                c.lateB += (r.late_b || 0);
+                c.lateW += (r.late_w || 0);
+                c.lateTot += ((r.late_b || 0) + (r.late_w || 0));
+                
+                globals.lateB += (r.late_b || 0);
+                globals.lateW += (r.late_w || 0);
+
+                if (r.late_lms_w) {
+                    for (let w = 0; w < 6; w++) {
+                        c.lateLmsW[w] += r.late_lms_w[w];
+                    }
+                }
+                // ---- PROMEDIO MIN LMS (audit_time clásico) ----
+                if (r.audit_lms > 0) {
+                    c.auditLmsTotal += r.audit_lms;
+                    c.auditLmsCount++;
+                }
+                if (r.audit_lms_w) {
+                    for (let w=0; w<6; w++) {
+                        if (r.audit_lms_w[w] > 0) {
+                            c.auditLmsTotalW[w] += r.audit_lms_w[w];
+                            c.auditLmsCountW[w]++;
+                        }
+                    }
+                }
+                
+                // ---- TIEMPO ABSOLUTO LMS (Extracción Raw para Clustering) ----
+                if (r.raw_lms_w) {
+                    for (let w=0; w<6; w++) {
+                        if (r.raw_lms_w[w] && r.raw_lms_w[w].length > 0) {
+                            c.rawLmsW[w].push(...r.raw_lms_w[w]);
+                        }
+                    }
+                }
+
+                if (r.raw_acp && r.raw_acp.length > 0) {
+                    c.rawAcp.push(...r.raw_acp); 
+                    c.acpTsCount++;
+                }
+
+                c.hits += (r.h || 0);
+                c.mails += (r.m || 0);
+                c.wa += (r.w || 0);
+                c.auditsLms += (r.a_lms || 0);
+                c.auditsAcp += (r.a_acp || 0);
+                c.audits = c.auditsLms + c.auditsAcp;
+
+                if (r.h_w) for(let w=0; w<6; w++) c.hitsW[w] += r.h_w[w];
+                if (r.m_w) for(let w=0; w<6; w++) c.mailsW[w] += r.m_w[w];
+                if (r.w_w) for(let w=0; w<6; w++) c.waW[w] += r.w_w[w];
+                if (r.a_lms_w || r.a_acp_w) {
+                    for(let w=0; w<6; w++) {
+                         if (r.a_lms_w) c.auditsLmsW[w] += r.a_lms_w[w];
+                         if (r.a_acp_w) c.auditsAcpW[w] += r.a_acp_w[w];
+                         let auds = (r.a_lms_w ? r.a_lms_w[w] : 0) + (r.a_acp_w ? r.a_acp_w[w] : 0);
+                         c.auditsW[w] += auds;
+                    }
+                }
+
+                globals.evidencias += ((r.h || 0) + (r.m || 0) + (r.w || 0));
+                globals.bursts += ((r.a_lms || 0) + (r.a_acp || 0));
+            });
+
+            // 3. Generar Arrays de Resumen
+            let coordinadores = Object.values(coordMap);
+            
+            // Calcular Avances para ordenar
+            coordinadores.forEach(c => {
+                c.pctLms = c.total > 0 ? (c.lmsProgressSum / c.total) : 0;
+                c.pctAcomp = c.total > 0 ? (c.acompProgressSum / c.total) : 0;
+                
+                // ===== PROMEDIO MIN LMS (audit_time clásico) =====
+                c.avgLmsW = [0,0,0,0,0,0];
+                for (let w=0; w<6; w++) {
+                    c.avgLmsW[w] = c.auditLmsCountW[w] > 0 ? c.auditLmsTotalW[w] / c.auditLmsCountW[w] : 0;
+                }
+                c.avgLms = c.auditLmsCount > 0 ? c.auditLmsTotal / c.auditLmsCount : 0;
+                
+                // ===== TIEMPO ABSOLUTO LMS Y ACOMP (Clustering Algorithm) =====
+                // Regla Institucional:
+                // - Sesiones activas continuas: intervalos <= 20 min (suma neta del tiempo).
+                // - Exclusión de tiempos muertos: pausas > 30 min (se descarta el tiempo inactivo y se inicia nueva sesión con base 2 min).
+                // - Intervalos > 20 min y <= 30 min: se tratan como cambio de sesión activa (+2 min base).
+                c.lmsTsTotal = 0;
+                const GAP_SESSION_MS = 20 * 60 * 1000;
+                const BASE_CRITERIA_MS = 2 * 60 * 1000;
+                
+                for (let w=0; w<6; w++) {
+                    let bag = c.rawLmsW[w];
+                    if (bag && bag.length > 0) {
+                        let sorted = bag.filter(t => typeof t === 'number' && !isNaN(t)).sort((a,b) => a - b);
+                        let totalMs = 0;
+                        if (sorted.length > 0) {
+                            totalMs += BASE_CRITERIA_MS;
+                            c.dedicLmsW[w]++;
+                            let lastValidTs = sorted[0];
+
+                            for (let i = 1; i < sorted.length; i++) {
+                                let diff = sorted[i] - lastValidTs;
+                                if (diff <= 0) continue;
+
+                                if (diff <= GAP_SESSION_MS) {
+                                    // Intervalo continuo en sesión (<= 20 min)
+                                    totalMs += diff;
+                                    lastValidTs = sorted[i];
+                                } else {
+                                    // Tiempos muertos > 30 min o pausas > 20 min: se excluye el tiempo inactivo y se inicia nueva sesión
+                                    totalMs += BASE_CRITERIA_MS;
+                                    c.dedicLmsW[w]++;
+                                    lastValidTs = sorted[i];
+                                }
+                            }
+                        }
+                        c.lmsTsTotalW[w] = (totalMs / 60000);
+                        c.lmsTsTotal += c.lmsTsTotalW[w];
+                    }
+                }
+                // === Clustering ACOMP ===
+                c.acpTsTotal = 0;
+                if (c.rawAcp && c.rawAcp.length > 0) {
+                    let sortedAcp = c.rawAcp.filter(t => typeof t === 'number' && !isNaN(t)).sort((a,b) => a - b);
+                    let tMs = 0;
+                    if (sortedAcp.length > 0) {
+                        tMs += BASE_CRITERIA_MS;
+                        let lastValidTsAcp = sortedAcp[0];
+
+                        for (let i = 1; i < sortedAcp.length; i++) {
+                            let diff = sortedAcp[i] - lastValidTsAcp;
+                            if (diff <= 0) continue;
+
+                            if (diff <= GAP_SESSION_MS) {
+                                tMs += diff;
+                                lastValidTsAcp = sortedAcp[i];
+                            } else {
+                                // Exclusión de tiempos muertos
+                                tMs += BASE_CRITERIA_MS;
+                                lastValidTsAcp = sortedAcp[i];
+                            }
+                        }
+                    }
+                    c.acpTsTotal = tMs / 60000;
+                }
+                
+                // ===== DEDICACIÓN LMS =====
+                c.dedicLms = c.total > 0 ? (c.lmsTsTotal / c.total) : 0;
+                c.avgAcomp = c.total > 0 ? c.acpTsTotal / c.total : 0;
+                c.dedicAcomp = c.acpTsTotal;
+            });
+
+            // Ranking Sorting General (Usando Promedio de ambos LMS/ACOMP)
+            coordinadores.sort((a,b) => ((b.pctLms + b.pctAcomp)/2) - ((a.pctLms + a.pctAcomp)/2));
+
+            const gPctLms = globals.totalAsigs > 0 ? (globals.lmsAprobados / globals.totalAsigs) * 100 : 0;
+            const gPctAcp = globals.totalAsigs > 0 ? (globals.acompAprobados / globals.totalAsigs) * 100 : 0;
+            const gAvance = ((gPctLms + gPctAcp) / 2).toFixed(1);
+
+            // Renderizar 4 Cartas Superiores
+            renderCoordKPIs(coordinadores.length, globals);
+
+            // Ocultar o Mostrar secciones según CURRENT_TAB
+            const cardLms = document.getElementById('cardGraphLms');
+            const cardAcp = document.getElementById('cardGraphAcomp');
+            const cardTrf = document.getElementById('cardGraphTrafico');
+            
+            const cardTot = document.getElementById('cardGraphTiemposTotal');
+            const cardDed = document.getElementById('cardGraphTiemposDedic');
+            const cardPro = document.getElementById('cardGraphTiemposPromedio');
+            
+            const contResumen = document.getElementById('containerTablaResumen');
+            const contKpis = document.getElementById('coord-kpis');
+            const contGraficas = document.getElementById('coordGridGraficas');
+            const contDetalle = document.getElementById('containerTablaDetalle');
+            
+            // Lógica de Visibilidad del filtro de semanas
+            const divFiltroUnidad = document.getElementById('containerFiltroCoordUnidad');
+            if (CURRENT_TAB === 'ANALISIS' || CURRENT_TAB === 'ACOMP') {
+                if (divFiltroUnidad) divFiltroUnidad.style.display = 'none';
+            } else {
+                if (divFiltroUnidad) divFiltroUnidad.style.display = 'flex';
             }
-            let c = coordMap[r.coord];
-            c.total++;
-
-            // LMS Logic
-            if(r.s_lms !== null && r.s_lms > 0) { 
-                c.lmsAprobados++; globals.lmsAprobados++;
-            } else if (r.startedLms) {
-                c.lmsProceso++; globals.lmsProceso++;
+            
+            // Lógica de Visibilidad Global
+            if(CURRENT_TAB === 'ANALISIS') {
+                // Pestaña ANALISIS: Solo mostrar tablas semanales de resumen
+                if(contKpis) contKpis.style.display = 'none';
+                if(contGraficas) contGraficas.style.display = 'none';
+                if(contDetalle) contDetalle.style.display = 'none';
+                if(contResumen) contResumen.style.display = 'block';
+            } else {
+                // Otras pestañas: Mostrar KPIs, gráficas, detalle; ocultar tablas semanales
+                if(contKpis) contKpis.style.display = 'grid';
+                if(contGraficas) contGraficas.style.display = 'grid';
+                if(contDetalle) contDetalle.style.display = 'block';
+                if(contResumen) contResumen.style.display = 'none';
+                if(cardPro) cardPro.style.display = 'block';
+                
+                if(CURRENT_TAB === 'LMS') {
+                    if(cardLms) cardLms.style.display = 'block';
+                    if(cardAcp) cardAcp.style.display = 'none';
+                    if(cardTrf) cardTrf.style.display = 'block';
+                    if(cardTot) cardTot.style.display = 'block';
+                    if(cardDed) cardDed.style.display = 'block';
+                } else if(CURRENT_TAB === 'ACOMP') {
+                    if(cardLms) cardLms.style.display = 'none';
+                    if(cardAcp) cardAcp.style.display = 'block';
+                    if(cardTrf) cardTrf.style.display = 'none';
+                    if(cardTot) cardTot.style.display = 'none';
+                    if(cardDed) cardDed.style.display = 'none';
+                } else {
+                    // ALL
+                    if(cardLms) cardLms.style.display = 'block';
+                    if(cardAcp) cardAcp.style.display = 'block';
+                    if(cardTrf) cardTrf.style.display = 'block';
+                    if(cardTot) cardTot.style.display = 'none';
+                    if(cardDed) cardDed.style.display = 'none';
+                }
             }
-            if(r.ts_lms > 0) {
-                c.lmsTsTotal += r.ts_lms; c.lmsTsCount++;
-            }
 
-            // Acomp Logic
-            if(r.s_acp !== null && r.s_acp > 0) { 
-                c.acompAprobados++; globals.acompAprobados++;
-            } else if (r.startedAcp) {
-                c.acompProceso++; globals.acompProceso++;
-            }
-            if(r.ts_acp > 0) {
-                c.acpTsTotal += r.ts_acp; c.acpTsCount++;
-            }
+            // Renderizar Gráficos (Aislados con try-catch para jamás bloquear al sistema)
+            try {
+                if (CURRENT_TAB === 'ALL' || CURRENT_TAB === 'LMS') {
+                    renderChartLmsAcomp(coordinadores, 'chartCoordLms', 'pctLms', 'LMS', '#0ea5e9');
+                    renderChartTrafico(coordinadores);
+                }
+                if (CURRENT_TAB === 'ALL' || CURRENT_TAB === 'ACOMP') {
+                    renderChartLmsAcomp(coordinadores, 'chartCoordAcomp', 'pctAcomp', 'ACOMP', '#f59e0b');
+                }
+            } catch(e) { console.error('Error in Lms/Acomp/Trf Charts', e); }
 
-            c.hits += r.h;
-            c.mails += r.m;
-            c.wa += r.w;
-            c.auditsLms += r.a_lms;
-            c.auditsAcp += r.a_acp;
-            c.audits = c.auditsLms + c.auditsAcp;
+            try {
+                renderChartTiempos(coordinadores);
+            } catch(e) { console.error('Error in Tiempos Chart', e); }
 
-            globals.evidencias += (r.h + r.m + r.w);
-            globals.bursts += c.audits;
-        });
-
-        // 3. Generar Arrays de Resumen
-        let coordinadores = Object.values(coordMap);
-        
-        // Calcular Avances para ordenar
-        coordinadores.forEach(c => {
-            c.pctLms = c.total > 0 ? (c.lmsAprobados / c.total) * 100 : 0;
-            c.pctAcomp = c.total > 0 ? (c.acompAprobados / c.total) * 100 : 0;
-            c.avgLms = c.lmsTsCount > 0 ? c.lmsTsTotal / c.lmsTsCount : 0;
-            c.avgAcomp = c.acpTsCount > 0 ? c.acpTsTotal / c.acpTsCount : 0;
-        });
-
-        // Ranking Sorting General (Usando Promedio de ambos LMS/ACOMP)
-        coordinadores.sort((a,b) => ((b.pctLms + b.pctAcomp)/2) - ((a.pctLms + a.pctAcomp)/2));
-
-        const gPctLms = globals.totalAsigs > 0 ? (globals.lmsAprobados / globals.totalAsigs) * 100 : 0;
-        const gPctAcp = globals.totalAsigs > 0 ? (globals.acompAprobados / globals.totalAsigs) * 100 : 0;
-        const gAvance = ((gPctLms + gPctAcp) / 2).toFixed(1);
-
-        // Renderizar 4 Cartas Superiores
-        renderCoordKPIs(coordinadores.length, globals);
-
-        // Ocultar o Mostrar Gráficos según CURRENT_TAB
-        const cardLms = document.getElementById('cardGraphLms');
-        const cardAcp = document.getElementById('cardGraphAcomp');
-        const cardTrf = document.getElementById('cardGraphTrafico');
-        
-        if(CURRENT_TAB === 'LMS') {
-            if(cardLms) cardLms.style.display = 'block';
-            if(cardAcp) cardAcp.style.display = 'none';
-            if(cardTrf) cardTrf.style.display = 'block';
-        } else if(CURRENT_TAB === 'ACOMP') {
-            if(cardLms) cardLms.style.display = 'none';
-            if(cardAcp) cardAcp.style.display = 'block';
-            if(cardTrf) cardTrf.style.display = 'none';
-        } else {
-            // ALL
-            if(cardLms) cardLms.style.display = 'block';
-            if(cardAcp) cardAcp.style.display = 'block';
-            if(cardTrf) cardTrf.style.display = 'block';
-        }
-
-        // Renderizar Gráficos
-        if (CURRENT_TAB === 'ALL' || CURRENT_TAB === 'LMS') {
-            renderChartLmsAcomp(coordinadores, 'chartCoordLms', 'pctLms', 'LMS', '#0ea5e9');
-            renderChartTrafico(coordinadores);
-        }
-        if (CURRENT_TAB === 'ALL' || CURRENT_TAB === 'ACOMP') {
-            renderChartLmsAcomp(coordinadores, 'chartCoordAcomp', 'pctAcomp', 'ACOMP', '#f59e0b');
-        }
-        renderChartTiempos(coordinadores);
-
-        // Renderizar Tablas
-        renderCoordResumen(coordinadores);
-        renderCoordDetalleAsignaturas(filteredData);
+            // Renderizar Tablas
+        try { renderCoordResumen(coordinadores); } catch(e) { console.error('Error en Tabla Resumen', e); }
+        try { renderCoordDetalleAsignaturas(filteredData); } catch(e) { console.error('Error en Tabla Asignaturas', e); }
     }
   
     /** RENDER 1: KPIs SUPERIORES */
@@ -309,16 +671,32 @@
         let pct = 0;
         let titlePct = "Avance Medio";
         
+        let filteredData = RAW_COORD_DATA.filter(r => {
+            if (document.getElementById('filtroCoordPrograma').value !== 'TODOS' && r.prog !== document.getElementById('filtroCoordPrograma').value) return false;
+            if (document.getElementById('filtroCoordAlias').value !== 'TODOS' && r.coord !== document.getElementById('filtroCoordAlias').value) return false;
+            return true;
+        });
+        
+        const lmsP = globals.totalAsigs > 0 ? (globals.lmsProgressSum / globals.totalAsigs) : 0;
+        const acpP = globals.totalAsigs > 0 ? (globals.acompProgressSum / globals.totalAsigs) : 0;
+
         if(CURRENT_TAB === 'ALL') {
-            const lmsP = globals.totalAsigs > 0 ? (globals.lmsAprobados / globals.totalAsigs) * 100 : 0;
-            const acpP = globals.totalAsigs > 0 ? (globals.acompAprobados / globals.totalAsigs) * 100 : 0;
             pct = ((lmsP + acpP) / 2).toFixed(1);
         } else if (CURRENT_TAB === 'LMS') {
             titlePct = "Avance LMS";
-            pct = globals.totalAsigs > 0 ? ((globals.lmsAprobados / globals.totalAsigs) * 100).toFixed(1) : 0;
+            pct = lmsP.toFixed(1);
         } else {
             titlePct = "Avance Acomp";
-            pct = globals.totalAsigs > 0 ? ((globals.acompAprobados / globals.totalAsigs) * 100).toFixed(1) : 0;
+            pct = acpP.toFixed(1);
+        }
+
+        let valBursts = 0;
+        if (CURRENT_TAB === 'LMS') {
+            valBursts = filteredData.reduce((acc, r) => acc + (r.a_lms || 0), 0);
+        } else if (CURRENT_TAB === 'ACOMP') {
+            valBursts = filteredData.reduce((acc, r) => acc + (r.a_acp || 0), 0);
+        } else {
+            valBursts = globals.bursts;
         }
 
         // Trafico Info (Solo mostrar si no es Acomp)
@@ -338,9 +716,51 @@
                 </div>
                 <div>
                     <h5 style="margin:0; font-size:12px; font-weight:700; color:#d97706; text-transform:uppercase;">Burst Audits</h5>
-                    <p style="margin:2px 0 0; font-size:22px; font-weight:800; color:#b45309;">${globals.bursts}</p>
+                    <p style="margin:2px 0 0; font-size:22px; font-weight:800; color:#b45309;">${valBursts}</p>
                 </div>
             </div>` : '';
+
+        let valLateB = 0;
+        let valLateW = 0;
+        if (CURRENT_TAB === 'LMS') {
+            valLateB = filteredData.reduce((acc, r) => acc + (r.late_b || 0), 0);
+            valLateW = filteredData.reduce((acc, r) => acc + (r.late_w || 0), 0);
+        } else if (CURRENT_TAB === 'ACOMP') {
+            valLateB = 0;
+            valLateW = filteredData.reduce((acc, r) => acc + (r.late_w || 0), 0);
+        } else {
+            valLateB = globals.lateB;
+            valLateW = globals.lateW;
+        }
+
+        const lateBlock = CURRENT_TAB !== 'ACOMP' ? `
+            <div style="background:#fff; border-radius:12px; border:1px solid #e2e8f0; padding:16px; display:flex; align-items:center; gap:16px; box-shadow:0 1px 3px rgba(0,0,0,0.04);">
+                <div style="width:48px; height:48px; border-radius:50%; background:#fee2e2; color:#ef4444; font-size:20px; display:flex; justify-content:center; align-items:center;">
+                    <i class="fa-solid fa-clock-rotate-left"></i>
+                </div>
+                <div>
+                    <h5 style="margin:0; font-size:12px; font-weight:700; color:#ef4444; text-transform:uppercase;">Bienv. Tardía</h5>
+                    <p style="margin:2px 0 0; font-size:22px; font-weight:800; color:#991b1b;">${valLateB}</p>
+                </div>
+            </div>
+            <div style="background:#fff; border-radius:12px; border:1px solid #e2e8f0; padding:16px; display:flex; align-items:center; gap:16px; box-shadow:0 1px 3px rgba(0,0,0,0.04);">
+                <div style="width:48px; height:48px; border-radius:50%; background:#ffedd5; color:#f97316; font-size:20px; display:flex; justify-content:center; align-items:center;">
+                    <i class="fa-solid fa-clock"></i>
+                </div>
+                <div>
+                    <h5 style="margin:0; font-size:12px; font-weight:700; color:#f97316; text-transform:uppercase;">Fuera Plazo</h5>
+                    <p style="margin:2px 0 0; font-size:22px; font-weight:800; color:#9a3412;">${valLateW}</p>
+                </div>
+            </div>` : `
+            <div style="background:#fff; border-radius:12px; border:1px solid #e2e8f0; padding:16px; display:flex; align-items:center; gap:16px; box-shadow:0 1px 3px rgba(0,0,0,0.04);">
+                <div style="width:48px; height:48px; border-radius:50%; background:#ffedd5; color:#f97316; font-size:20px; display:flex; justify-content:center; align-items:center;">
+                    <i class="fa-solid fa-clock"></i>
+                </div>
+                <div>
+                    <h5 style="margin:0; font-size:12px; font-weight:700; color:#f97316; text-transform:uppercase;">Fuera Plazo</h5>
+                    <p style="margin:2px 0 0; font-size:22px; font-weight:800; color:#9a3412;">${valLateW}</p>
+                </div>
+            </div>`;
 
         document.getElementById('coord-kpis').innerHTML = `
             <div style="background:#fff; border-radius:12px; border:1px solid #e2e8f0; padding:16px; display:flex; align-items:center; gap:16px; box-shadow:0 1px 3px rgba(0,0,0,0.04);">
@@ -353,6 +773,15 @@
                 </div>
             </div>
             <div style="background:#fff; border-radius:12px; border:1px solid #e2e8f0; padding:16px; display:flex; align-items:center; gap:16px; box-shadow:0 1px 3px rgba(0,0,0,0.04);">
+                <div style="width:48px; height:48px; border-radius:50%; background:#e0e7ff; color:#4f46e5; font-size:20px; display:flex; justify-content:center; align-items:center;">
+                    <i class="fa-solid fa-book-bookmark"></i>
+                </div>
+                <div>
+                    <h5 style="margin:0; font-size:12px; font-weight:700; color:#64748b; text-transform:uppercase;">Aulas a Revisar</h5>
+                    <p style="margin:2px 0 0; font-size:22px; font-weight:800; color:#0f172a;">${filteredData.length}</p>
+                </div>
+            </div>
+            <div style="background:#fff; border-radius:12px; border:1px solid #e2e8f0; padding:16px; display:flex; align-items:center; gap:16px; box-shadow:0 1px 3px rgba(0,0,0,0.04);">
                 <div style="width:48px; height:48px; border-radius:50%; background:#dcfce7; color:#16a34a; font-size:20px; display:flex; justify-content:center; align-items:center;">
                     <i class="fa-solid fa-chart-line"></i>
                 </div>
@@ -362,88 +791,119 @@
                 </div>
             </div>
             ${trfBlock}
+            ${lateBlock}
         `;
     }
 
-    /** RENDER 2: TABLA RESUMEN */
+    /** RENDER 2: TABLAS RESUMEN CONSOLIDADO POR SEMANA (S0 a S5) */
     function renderCoordResumen(arr) {
-        // Logica Ocultar Cabeceras Tabla 1
-        let showLms = (CURRENT_TAB === 'ALL' || CURRENT_TAB === 'LMS');
-        let showAcp = (CURRENT_TAB === 'ALL' || CURRENT_TAB === 'ACOMP');
-        let showTrf = (CURRENT_TAB !== 'ACOMP');
-
-        const thO = (id, show) => { let el = document.getElementById(id); if(el) el.style.display = show ? '' : 'none'; };
-        thO('thR_lmsAv', showLms); thO('thR_acpAv', showAcp);
-        thO('thR_lmsTm', showLms); thO('thR_acpTm', showAcp);
-        thO('thR_hits', showTrf); thO('thR_mails', showTrf); thO('thR_wa', showTrf); thO('thR_audits', true);
-
-        const tbody = document.getElementById('coord-resumen-body');
-        tbody.innerHTML = '';
-        if(arr.length === 0) return;
-
-        arr.forEach((c, idx) => {
-            let tr = document.createElement('tr');
-            tr.style.borderBottom = "1px solid #f1f5f9";
-            
-            // Format Avances
-            let badgeLms = `<span style="padding:4px 8px; border-radius:12px; font-size:11px; font-weight:800; background:#e0f2fe; color:#0369a1;">${c.pctLms.toFixed(1)}%</span>`;
-            if(c.pctLms < 100) badgeLms = `<span style="padding:4px 8px; border-radius:12px; font-size:11px; font-weight:800; background:#fef3c7; color:#b45309;">${c.pctLms.toFixed(1)}%</span>`;
-            if(c.pctLms < 50) badgeLms = `<span style="padding:4px 8px; border-radius:12px; font-size:11px; font-weight:800; background:#fee2e2; color:#b91c1c;">${c.pctLms.toFixed(1)}%</span>`;
-
-            let badgeAcp = `<span style="padding:4px 8px; border-radius:12px; font-size:11px; font-weight:800; background:#dcfce7; color:#15803d;">${c.pctAcomp.toFixed(1)}%</span>`;
-            if(c.pctAcomp < 100) badgeAcp = `<span style="padding:4px 8px; border-radius:12px; font-size:11px; font-weight:800; background:#fef3c7; color:#b45309;">${c.pctAcomp.toFixed(1)}%</span>`;
-            if(c.pctAcomp < 50) badgeAcp = `<span style="padding:4px 8px; border-radius:12px; font-size:11px; font-weight:800; background:#fee2e2; color:#b91c1c;">${c.pctAcomp.toFixed(1)}%</span>`;
-
-            // Format Burst
-            let visibleAudits = c.audits;
-            if (CURRENT_TAB === 'LMS') visibleAudits = c.auditsLms;
-            if (CURRENT_TAB === 'ACOMP') visibleAudits = c.auditsAcp;
-
-            let auditBadge = `<span style="color:#94a3b8; font-size:11px;">0</span>`;
-            if(visibleAudits > 0) auditBadge = `<span style="padding:4px 10px; border-radius:6px; font-size:11px; font-weight:800; background:#ffedd5; color:#c2410c; border:1px solid #fdba74;"><i class="fa-solid fa-triangle-exclamation mr-1"></i>${visibleAudits}</span>`;
-
-            let tdLmsAv = showLms ? `<td style="padding:14px 16px; text-align:center;">${badgeLms}</td>` : '';
-            let tdAcpAv = showAcp ? `<td style="padding:14px 16px; text-align:center;">${badgeAcp}</td>` : '';
-            let tdLmsT = showLms ? `<td style="padding:14px 16px; text-align:center; font-size:13px; font-weight:600; color:#475569;">${formatMinutes(c.avgLms)}</td>` : '';
-            let tdAcpT = showAcp ? `<td style="padding:14px 16px; text-align:center; font-size:13px; font-weight:600; color:#475569;">${formatMinutes(c.avgAcomp)}</td>` : '';
-            
-            // "Tráfico" is specific to LMS mostly (Hits, Mails, WA). But Audits apply to both.
-            // If we are in ACOMP, we don't show Tráfico (because showTrf = false).
-            // Wait, the user explicitly asked to see Audits in Acomp!
-            // I should override showTrf to show Audits even in Acomp IF they have Acomp bursts.
-            // Actually, in the UI there is an 'Audits' column inside the 'Trafico' group.
-            // Let's modify the showTrf logic natively so Audits appear separately!
-            // If Tráfico is hidden, we STILL want the audit column to show for Acomp! 
-            let tdTrafico = ``;
-            if (showTrf) {
-                tdTrafico += `<td style="padding:14px 16px; text-align:center; font-size:13px; color:#475569;">${c.hits}</td>
-                              <td style="padding:14px 16px; text-align:center;"><span style="color:#d97706; font-size:13px; font-weight:700; background:#fef3c7; padding:2px 8px; border-radius:10px;"><i class="fa-solid fa-envelope mr-1 text-[10px]"></i> ${c.mails}</span></td>
-                              <td style="padding:14px 16px; text-align:center;"><span style="color:#15803d; font-size:13px; font-weight:700; background:#dcfce7; padding:2px 8px; border-radius:10px;"><i class="fa-brands fa-whatsapp mr-1 text-[10px]"></i> ${c.wa}</span></td>`;
+        var container = document.getElementById('coordTablaResumen');
+        if (!container) {
+            console.error('[COORD] No se encontró el contenedor coordTablaResumen.');
+            return;
+        }
+        
+        try {
+            if (!arr || arr.length === 0) {
+                container.innerHTML = '<p style="color:#94a3b8; text-align:center; padding:40px; font-size:14px;">No hay datos de coordinadores disponibles.</p>';
+                return;
             }
-            // Audit always visible, it just adapts its value
-            tdTrafico += `<td style="padding:14px 16px; text-align:center;">${auditBadge}</td>`;
+            
+            var WEEKS = [
+                { idx: 0, label: 'Bienvenida / Pre-inicio (W0)' },
+                { idx: 1, label: 'Semana 1' },
+                { idx: 2, label: 'Semana 2' },
+                { idx: 3, label: 'Semana 3' },
+                { idx: 4, label: 'Semana 4' },
+                { idx: 5, label: 'Semana: Cierre' }
+            ];
+            
+            var html = '';
+            
+            WEEKS.forEach(function(wk) {
+                // Card contenedor con header oscuro
+                html += '<div style="background:#fff; border-radius:12px; border:1px solid #e2e8f0; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.04); margin-bottom:20px;">';
+                
+                // Header oscuro con gradiente
+                html += '<div style="background:linear-gradient(135deg, #1e293b 0%, #334155 100%); padding:12px 20px; display:flex; align-items:center; gap:10px;">';
+                html += '<i class="fa-solid fa-users-viewfinder" style="color:#94a3b8; font-size:14px;"></i>';
+                html += '<span style="color:#e2e8f0; font-size:13px; font-weight:700;">Resumen Consolidado: <span style="color:#60a5fa;">' + wk.label + '</span></span>';
+                html += '</div>';
+                
+                // Tabla
+                html += '<table style="width:100%; border-collapse:collapse; font-size:13px;">';
+                html += '<thead><tr style="background:#f8fafc; border-bottom:1px solid #e2e8f0;">';
+                html += '<th style="padding:10px 16px; text-align:left; font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; width:40px;">N°</th>';
+                html += '<th style="padding:10px 16px; text-align:left; font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase;">Coordinador</th>';
+                html += '<th style="padding:10px 16px; text-align:center; font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase;">Promedio Min LMS</th>';
+                html += '<th style="padding:10px 16px; text-align:center; font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase;">Tiempo Absoluto LMS</th>';
+                html += '<th style="padding:10px 16px; text-align:center; font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase;">Dedicación LMS</th>';
+                html += '<th style="padding:10px 16px; text-align:center; font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase;">Hits Aula</th>';
+                html += '<th style="padding:10px 16px; text-align:center; font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase;">Emails</th>';
+                html += '<th style="padding:10px 16px; text-align:center; font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase;">WhatsApp</th>';
+                html += '<th style="padding:10px 16px; text-align:center; font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase;">Auditorías</th>';
+                html += '<th style="padding:10px 16px; text-align:center; font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase;">Fuera Plazo</th>';
+                html += '</tr></thead>';
+                html += '<tbody>';
+                
+                arr.forEach(function(c, idx) {
+                    var w = wk.idx;
+                    var promMinLms = c.avgLmsW ? (c.avgLmsW[w] || 0) : 0;
+                    var tiempoAbs  = c.lmsTsTotalW ? (c.lmsTsTotalW[w] || 0) : 0;
+                    var dedicacion = c.total > 0 ? ((c.lmsTsTotalW ? c.lmsTsTotalW[w] : 0) || 0) / c.total : 0;
+                    var hits  = c.hitsW ? (c.hitsW[w] || 0) : 0;
+                    var mails = c.mailsW ? (c.mailsW[w] || 0) : 0;
+                    var wa    = c.waW ? (c.waW[w] || 0) : 0;
+                    var audits = c.auditsW ? (c.auditsW[w] || 0) : 0;
+                    var lateCount = c.lateLmsW ? (c.lateLmsW[w] || 0) : 0;
+                    
+                    var mailsDisplay = mails > 0 
+                        ? '<span style="color:#d97706; font-weight:700; background:#fef3c7; padding:2px 8px; border-radius:10px;">' + mails + '</span>' 
+                        : '<span style="color:#94a3b8;">-</span>';
+                    
+                    var waDisplay = wa > 0 
+                        ? '<span style="color:#15803d; font-weight:700; background:#dcfce7; padding:2px 8px; border-radius:10px;">' + wa + '</span>' 
+                        : '<span style="color:#94a3b8;">-</span>';
+                    
+                    var dedicDisplay = dedicacion > 0 
+                        ? '<span style="padding:3px 8px; border-radius:10px; font-size:12px; font-weight:800; background:#e0f2fe; color:#0369a1;">' + dedicacion.toFixed(2) + '</span>' 
+                        : '<span style="color:#94a3b8;">-</span>';
+                        
+                    var auditsDisplay = audits > 0
+                        ? '<span style="color:#ef4444; font-weight:700; background:#fee2e2; padding:2px 8px; border-radius:10px;">' + audits + '</span>'
+                        : '<span style="color:#94a3b8;">-</span>';
 
-            tr.innerHTML = `
-                <td style="padding:14px 16px; font-size:13px; color:#64748b;">${idx+1}</td>
-                <td style="padding:14px 16px;">
-                    <div style="display:flex; align-items:center; gap:10px;">
-                        <div style="width:8px; height:8px; border-radius:50%; background:#8b5cf6;"></div>
-                        <span style="font-size:14px; font-weight:700; color:#1e293b;">${c.coord}</span>
-                        <span style="font-size:10px; color:#94a3b8; background:#f1f5f9; padding:2px 6px; border-radius:10px;">${c.total} Aulas</span>
-                    </div>
-                </td>
-                ${tdLmsAv}
-                ${tdAcpAv}
-                ${tdLmsT}
-                ${tdAcpT}
-                ${tdTrafico}
-            `;
-            tbody.appendChild(tr);
-        });
+                    var lateDisplay = lateCount > 0
+                        ? '<span style="color:#991b1b; font-weight:700; background:#fee2e2; padding:2px 8px; border-radius:10px;"><i class="fa-solid fa-clock mr-1" style="font-size:10px;"></i>' + lateCount + '</span>'
+                        : '<span style="color:#94a3b8;">-</span>';
+                    
+                    html += '<tr style="border-bottom:1px solid #f1f5f9;">';
+                    html += '<td style="padding:12px 16px; color:#64748b;">' + (idx + 1) + '</td>';
+                    html += '<td style="padding:12px 16px;"><div style="display:flex; align-items:center; gap:10px;"><div style="width:8px; height:8px; border-radius:50%; background:#8b5cf6;"></div><span style="font-weight:700; color:#1e293b;">' + (c.coord || 'N/A') + '</span><span style="font-size:10px; color:#94a3b8; background:#f1f5f9; padding:2px 6px; border-radius:10px;">' + (c.total || 0) + ' Aulas</span></div></td>';
+                    html += '<td style="padding:12px 16px; text-align:center; font-weight:600; color:#475569;">' + (promMinLms > 0 ? formatMinutes(promMinLms) : '-') + '</td>';
+                    html += '<td style="padding:12px 16px; text-align:center; font-weight:600; color:#4338ca;">' + (tiempoAbs > 0 ? formatMinutes(tiempoAbs) : '-') + '</td>';
+                    html += '<td style="padding:12px 16px; text-align:center;">' + dedicDisplay + '</td>';
+                    html += '<td style="padding:12px 16px; text-align:center; color:#475569;">' + (hits > 0 ? hits : '-') + '</td>';
+                    html += '<td style="padding:12px 16px; text-align:center;">' + mailsDisplay + '</td>';
+                    html += '<td style="padding:12px 16px; text-align:center;">' + waDisplay + '</td>';
+                    html += '<td style="padding:12px 16px; text-align:center;">' + auditsDisplay + '</td>';
+                    html += '<td style="padding:12px 16px; text-align:center;">' + lateDisplay + '</td>';
+                    html += '</tr>';
+                });
+                
+                html += '</tbody></table></div>';
+            });
+            
+            container.innerHTML = html;
+            
+        } catch (err) {
+            container.innerHTML = '<div style="color:red; padding:20px; border:1px solid red; background:#fef2f2;"><b>ERROR RENDER TABLAS RESUMEN:</b> ' + err.message + '</div>';
+            console.error(err);
+        }
     }
 
     /** 
-     * RENDER 3: TABLA INDIVIDUAL DATATABLES DETALLADA 
+     * RENDER 3: TABLA INDIVIDUAL DETALLADA 
      */
     function renderCoordDetalleAsignaturas(dataArr) {
         if(dtCoordAsignaturasInst) {
@@ -458,13 +918,57 @@
             let tr = document.createElement('tr');
             tr.className = 'border-b hover:bg-slate-50 transition-colors';
             
-            let btnLms = r.s_lms !== null ? `<span class="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded font-bold whitespace-nowrap">${formatMinutes(r.ts_lms)}</span>` : `-`;
+            let rawLmsTime = r.audit_lms || 0;
+            let isIncomplete = false;
+            
+            let wkIdx = -1;
+            if (CURRENT_WEEK_TAB === 'S1') wkIdx = 1;
+            else if (CURRENT_WEEK_TAB === 'S2') wkIdx = 2;
+            else if (CURRENT_WEEK_TAB === 'S3') wkIdx = 3;
+            else if (CURRENT_WEEK_TAB === 'S4') wkIdx = 4;
+
+            let evalW_det = r.eval_lms_w || [0,0,0,0,0,0];
+            let rawW_det = r.raw_lms_w || [[],[],[],[],[],[]];
+            let cntW_det = (w) => Math.max(evalW_det[w] || 0, (rawW_det[w] ? rawW_det[w].length : 0));
+
+            if (wkIdx !== -1) {
+                if (r.audit_lms_w && r.audit_lms_w[wkIdx] > 0) {
+                    rawLmsTime = r.audit_lms_w[wkIdx];
+                } else if (cntW_det(wkIdx) === 0) {
+                    if (r.startedLms) isIncomplete = true;
+                } else {
+                    rawLmsTime = 0;
+                }
+            } else {
+                 let totEval_det = cntW_det(0) + cntW_det(1) + cntW_det(2) + cntW_det(3) + cntW_det(4) + cntW_det(5);
+                 if (rawLmsTime === 0 && r.startedLms && totEval_det === 0) isIncomplete = true;
+            }
+
+            let formatLms = isIncomplete ? "Incompleto" : formatMinutes(rawLmsTime);
+            let cssLms = isIncomplete ? "bg-red-100 text-red-800 border border-red-200" : "bg-blue-100 text-blue-800";
+            
+            let btnLms = r.s_lms !== null || r.startedLms ? `<span class="${cssLms} text-[10px] px-2 py-1 rounded font-bold whitespace-nowrap shadow-sm">${formatLms}</span>` : `<span class="text-xs text-gray-300">-</span>`;
             let btnAcp = r.s_acp !== null ? `<span class="bg-amber-100 text-amber-800 text-xs px-2 py-1 rounded font-bold whitespace-nowrap">${formatMinutes(r.ts_acp)}</span>` : `-`;
             
             let vAud = CURRENT_TAB === 'ACOMP' ? r.a_acp : r.a_lms;
             if (CURRENT_TAB === 'ALL') vAud = r.a;
             
             let audBag = vAud > 0 ? `<span class="bg-red-100 border border-red-300 text-red-700 text-xs px-2 py-1 rounded font-bold shadow-sm" title="Ráfagas Alertadas"><i class="fa-solid fa-triangle-exclamation mr-1"></i>${vAud}</span>` : `<span class="text-xs text-gray-300 font-bold">0</span>`;
+
+            let vLateB = r.late_b || 0;
+            let vLateW = r.late_w || 0;
+            if (wkIdx !== -1) {
+                vLateB = 0; 
+                vLateW = r.late_lms_w ? (r.late_lms_w[wkIdx] || 0) : 0;
+            }
+
+            let badgeLateB = vLateB > 0 
+                ? `<span class="bg-red-100 border border-red-300 text-red-700 text-xs px-2 py-1 rounded font-bold shadow-sm" title="Bienvenida fuera de plazo"><i class="fa-solid fa-triangle-exclamation mr-1"></i>${vLateB}</span>`
+                : `<span class="text-xs text-gray-300 font-bold">0</span>`;
+
+            let badgeLateW = vLateW > 0
+                ? `<span class="bg-amber-100 border border-amber-300 text-amber-700 text-xs px-2 py-1 rounded font-bold shadow-sm" title="Calificación fuera de plazo"><i class="fa-solid fa-clock mr-1"></i>${vLateW}</span>`
+                : `<span class="text-xs text-gray-300 font-bold">0</span>`;
 
             tr.innerHTML = `
                 <td class="px-4 py-3 font-medium text-xs truncate max-w-[150px]" title="${r.prog}">${r.prog}</td>
@@ -477,6 +981,8 @@
                 <td class="px-3 py-3 text-center text-xs text-orange-600 font-bold border-l">${r.m}</td>
                 <td class="px-3 py-3 text-center text-xs text-emerald-600 font-bold border-l">${r.w}</td>
                 <td class="px-3 py-3 text-center border-l">${audBag}</td>
+                <td class="px-3 py-3 text-center border-l">${badgeLateB}</td>
+                <td class="px-3 py-3 text-center border-l">${badgeLateW}</td>
             `;
             tbody.appendChild(tr);
         });
@@ -502,7 +1008,9 @@
         dtCoordAsignaturasInst.column(6).visible(showTrafico); // hits
         dtCoordAsignaturasInst.column(7).visible(showTrafico); // mails
         dtCoordAsignaturasInst.column(8).visible(showTrafico); // wa
-        dtCoordAsignaturasInst.column(9).visible(true);        // audits se queda siempre visible porque Acomp tiene los suyos
+        dtCoordAsignaturasInst.column(9).visible(true);        // audits
+        dtCoordAsignaturasInst.column(10).visible(CURRENT_TAB === 'ALL' || CURRENT_TAB === 'LMS'); // B. Tardía
+        dtCoordAsignaturasInst.column(11).visible(true);       // fuera plazo
     }
 
     /** 
@@ -558,53 +1066,81 @@
         if (!arr || arr.length === 0) return;
         
         let labels = arr.map(c => c.coord);
-        let dataLms = arr.map(c => c.avgLms.toFixed(1));
-        let dataAcp = arr.map(c => c.avgAcomp.toFixed(1));
+        
+        let wIdx = -1;
+        if (CURRENT_WEEK_TAB === 'S1') wIdx = 1;
+        else if (CURRENT_WEEK_TAB === 'S2') wIdx = 2;
+        else if (CURRENT_WEEK_TAB === 'S3') wIdx = 3;
+        else if (CURRENT_WEEK_TAB === 'S4') wIdx = 4;
 
-        const ctx = document.getElementById('chartCoordTiempos');
-        if(!ctx) return;
-        if(chartCoordTiemposInst) {
-            chartCoordTiemposInst.destroy();
-            chartCoordTiemposInst = null;
-        }
+        let dataLms = arr.map(c => wIdx === -1 ? c.avgLms.toFixed(1) : Math.max(0, c.avgLmsW[wIdx]).toFixed(1));
+        let dataAcp = arr.map(c => CURRENT_WEEK_TAB === 'ALL' ? c.avgAcomp.toFixed(1) : 0);
+        let dataLmsTotal = arr.map(c => wIdx === -1 ? c.lmsTsTotal.toFixed(1) : Math.max(0, c.lmsTsTotalW[wIdx]).toFixed(1));
+        let dataLmsDedic = arr.map(c => wIdx === -1 ? c.dedicLms : c.dedicLmsW[wIdx]);
 
-        let datasetsArr = [];
-        if (CURRENT_TAB === 'ALL' || CURRENT_TAB === 'LMS') {
-            datasetsArr.push({
-                label: 'LMS (Min)',
-                data: dataLms,
-                backgroundColor: '#60a5fa', // Blue
-                borderRadius: 4
-            });
-        }
-        if (CURRENT_TAB === 'ALL' || CURRENT_TAB === 'ACOMP') {
-            datasetsArr.push({
-                label: 'Acompañamiento (Min)',
-                data: dataAcp,
-                backgroundColor: '#fbbf24', // Yellow
-                borderRadius: 4
-            });
-        }
+        let strSufix = wIdx === -1 ? "" : (" - " + CURRENT_WEEK_TAB);
+        let titleNodeProm = document.getElementById('tituloTiemposProm');
+        if (titleNodeProm) titleNodeProm.innerText = "Tiempo Promedio por Asignatura Evaluada (Minutos)" + strSufix;
+        let titleNodeTotal = document.getElementById('tituloTiemposTotal');
+        if (titleNodeTotal) titleNodeTotal.innerText = "Tiempo Total Invertido (Suma Bruta)" + strSufix;
+        let titleNodeDedic = document.getElementById('tituloTiemposDedic');
+        if (titleNodeDedic) titleNodeDedic.innerText = "Índice Pedagógico: Dedicación por Carga Laboral " + strSufix;
 
-        chartCoordTiemposInst = new Chart(ctx, {
-            type: 'bar',
-            data: {
-                labels: labels,
-                datasets: datasetsArr
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } },
-                    tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${ctx.raw}' min` } }
-                },
-                scales: {
-                    y: { beginAtZero: true, grace: '10%' },
-                    x: { grid: { display: false } }
+        // Display visibility is handled in renderDashboard, but we update chart contents anyway
+
+        // 1. Chart Promedios
+        const ctx1 = document.getElementById('chartCoordTiempos');
+        if(ctx1) {
+            if(chartCoordTiemposInst) chartCoordTiemposInst.destroy();
+            let ds1 = [];
+            if (CURRENT_TAB === 'ALL' || CURRENT_TAB === 'LMS') {
+                ds1.push({ label: 'LMS Promedio (Min)', data: dataLms, backgroundColor: '#60a5fa', borderRadius: 4 });
+            }
+            if (CURRENT_TAB === 'ALL' || CURRENT_TAB === 'ACOMP') {
+                if(CURRENT_WEEK_TAB === 'ALL') {
+                   ds1.push({ label: 'Acompañamiento Promedio (Min)', data: dataAcp, backgroundColor: '#fbbf24', borderRadius: 4 });
                 }
             }
-        });
+            chartCoordTiemposInst = new Chart(ctx1, {
+                type: 'bar',
+                data: { labels: labels, datasets: ds1 },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { position: 'bottom' }, tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${ctx.raw} min` } } },
+                    scales: { y: { beginAtZero: true }, x: { grid: { display: false } } }
+                }
+            });
+        }
+
+        // 2. Chart Absoluto (LMS)
+        const ctx2 = document.getElementById('chartCoordTiemposTotal');
+        if(ctx2 && CURRENT_TAB === 'LMS') {
+            if(chartCoordTiemposTotalInst) chartCoordTiemposTotalInst.destroy();
+            chartCoordTiemposTotalInst = new Chart(ctx2, {
+                type: 'bar',
+                data: { labels: labels, datasets: [{ label: 'Tiempo Absoluto LMS (Min)', data: dataLmsTotal, backgroundColor: '#818cf8', borderRadius: 4 }] },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { position: 'bottom' }, tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${ctx.raw} min` } } },
+                    scales: { y: { beginAtZero: true }, x: { grid: { display: false } } }
+                }
+            });
+        }
+
+        // 3. Chart Dedicacion (LMS)
+        const ctx3 = document.getElementById('chartCoordTiemposDedic');
+        if(ctx3 && CURRENT_TAB === 'LMS') {
+            if(chartCoordTiemposDedicInst) chartCoordTiemposDedicInst.destroy();
+            chartCoordTiemposDedicInst = new Chart(ctx3, {
+                type: 'bar',
+                data: { labels: labels, datasets: [{ label: 'Asignaturas Completadas (≤6h)', data: dataLmsDedic, backgroundColor: '#38bdf8', borderRadius: 4 }] },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { position: 'bottom' }, tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${ctx.raw} asig.` } } },
+                    scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } }, x: { grid: { display: false } } }
+                }
+            });
+        }
     }
 
     function renderChartTrafico(arr) {
@@ -628,7 +1164,7 @@
                 labels: labels,
                 datasets: [
                     {
-                        label: 'Hits/Accesos (Moodle)',
+                        label: 'Hits/Accesos (Aula Virtual)',
                         data: dataHits,
                         backgroundColor: '#cbd5e1', // Gris sutil
                     },
@@ -726,5 +1262,10 @@
             showToast("¡Finalizado!", "Su archivo PDF se descargó.", "success");
         });
     }
+
+    // =============================================================
+    // El setup ya no inyecta HTML, usamos el HTML estático
+    // =============================================================
+
 </script>
 <!-- ==================== JS END ==================== -->
