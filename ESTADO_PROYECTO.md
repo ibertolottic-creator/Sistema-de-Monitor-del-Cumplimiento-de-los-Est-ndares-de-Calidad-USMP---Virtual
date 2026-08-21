@@ -1,7 +1,7 @@
 # Estado del Proyecto: Sistema de Monitoreo USMP - Pregrado
 
-**Fecha de Última Actualización:** 20 de Agosto de 2026  
-**Versión:** 2.7.0 (Métricas de Coordinadores BI, Clustering de Tiempos Absolutos, Ruteo y Reubicación de Hits Aula)
+**Fecha de Última Actualización:** 21 de Agosto de 2026  
+**Versión:** 2.8.0 (Exportación PDF Matriz Consolidada, Integración Sheets y Precisión Decimal 1:1 con BI)
 
 ---
 
@@ -9,7 +9,7 @@
 
 Sistema de **Monitoreo del Cumplimiento de los Estándares de Calidad (Pregrado)** construido como una SPA (Single Page Application) en Google Apps Script. Permite a coordinadores y jefaturas evaluar asignaturas (Virtuales y Presenciales), registrar Acompañamiento Pedagógico, generar fichas docentes, enviar resultados y analizar métricas de desempeño mediante dashboards ejecutivos de Business Intelligence.
 
-- **Arquitectura:** Serverless (Google Workspace). Frontend SPA con HTML5 / Vanilla JS / Tailwind CSS CDN / FontAwesome 6 / Chart.js. Backend en Google Apps Script (.gs).
+- **Arquitectura:** Serverless (Google Workspace). Frontend SPA con HTML5 / Vanilla JS / Tailwind CSS CDN / FontAwesome 6 / Chart.js / html2pdf.js. Backend en Google Apps Script (.gs).
 - **Base de Datos:** Google Sheets como matriz relacional y Data Mart analítico.
 - **Autenticación:** Implícita mediante `Session.getActiveUser().getEmail()`.
 - **Roles y Permisos:** Admin, Jefe de área, Coordinador, Invitado.
@@ -99,6 +99,17 @@ Sistema de **Monitoreo del Cumplimiento de los Estándares de Calidad (Pregrado)
    - En *Acompañamiento Pedagógico*, *Virtual* y *Presencial*, un coordinador solo recibe los cursos asignados a su correo (Col S) o a su nombre (Col R). Los cursos de otros coordinadores quedan completamente invisibles.
 3. **Validación de Propiedad en Escritura (`saveGrade`)**:
    - Se valida en backend que el usuario que intenta calificar sea el coordinador asignado a la fila o un Administrador/Jefe. Si un usuario intenta enviar una nota a un curso no asignado, la petición se bloquea con `Acceso denegado`.
+
+### E. Consolidación de Resultados, Exportación PDF e Integración Sheets (v2.8.0)
+1. **Exportación a PDF de toda la Matriz Consolidada (`html2pdf.js`)**:
+   - Botón `Descargar PDF` con ícono y diseño institucional en la cabecera del módulo *Envío de Resultados y Fichas*.
+   - Genera un documento en orientación horizontal (*landscape* A4) con membrete oficial USMP Virtual, fecha/hora de emisión, conteo total de asignaturas, resumen por dimensión (LMS, Acompañamiento, Centesimal, Vigesimal y Nivel) y badges de estado.
+2. **Acceso Directo a Hoja de Cálculo (`abrirHojaGoogleSheetsResultados`)**:
+   - Botón `Abrir en Sheets` que abre con 1 clic la pestaña `Envío de resultados y fichas` en Google Sheets (`window.open(sheetUrl, '_blank')`).
+3. **Corrección de Precisión Decimal y Alineación 1:1 con Análisis BI**:
+   - Reemplazo de `getDisplayValues()` por lectura numérica exacta `getValues()` en `GeneradorResultados.gs`, evitando que celdas sin formato trunquen números decimales a enteros (`17.00` o `15.00`).
+   - Aplicación persistente de formato numérico `.setNumberFormat("0.00")` a las columnas `V` (22), `AA` (27), `AE` (31) y `AF` (32).
+   - Alineación estricta de la fórmula vigesimal con BI: promedio aritmético exacto `(sL + sA) / 2` cuando ambas evaluaciones existen, y preservación del componente único evaluado cuando el otro aún está en progreso.
 
 ---
 
