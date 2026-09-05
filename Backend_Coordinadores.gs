@@ -149,19 +149,46 @@ function getMetricasCoordinadores(forceSync) {
         var rawStartDate = row[19];
         var startDate = parseDateHelper(rawStartDate);
 
-        // 1. Mapeo de Criterios con Calificación Registrada (> 0)
+        // 1. Mapeo y Conteo Directo de Criterios LMS con Calificación Registrada (> 0)
         var evaluatedCriteriaMap = {};
         for (var t = 0; t < idxCriteriaLms.length; t++) {
             var colIndex = idxCriteriaLms[t];
             var codeName = String(headerCodes[colIndex]).trim().toLowerCase();
+
+            // Filtrar relevancia según modalidad de la asignatura:
+            // En Presencial: se ignoran las tutorías virtuales (c_3_1_s1 a c_3_1_s4)
+            if (modalidad === 'PRESENCIAL' && (codeName === 'c_3_1_s1' || codeName === 'c_3_1_s2' || codeName === 'c_3_1_s3' || codeName === 'c_3_1_s4')) {
+                continue;
+            }
+            // En Virtual: se ignoran los 4 criterios exclusivos presenciales (cp_3_1_s1, cp_3_2_s2, cp_3_3_s4, cp_4_1_s4)
+            if (modalidad !== 'PRESENCIAL' && codeName.startsWith('cp_')) {
+                continue;
+            }
+            // Ignorar criterios de acompañamiento que puedan tener prefijo c_ (ej. c_c10_eva, c_c11_ext)
+            if (codeName.startsWith('c_c10_') || codeName.startsWith('c_c11_')) {
+                continue;
+            }
+
             var valGrade = row[colIndex];
             if (valGrade !== null && valGrade !== undefined && String(valGrade).trim() !== '' && !isNaN(Number(valGrade)) && Number(valGrade) > 0) {
                 evaluatedCriteriaMap[codeName] = true;
                 tieneTsLms = true;
+
+                var wkc = -1;
+                if (codeName.indexOf('_s1') !== -1) wkc = 1;
+                else if (codeName.indexOf('_s2') !== -1) wkc = 2;
+                else if (codeName.indexOf('_s3') !== -1) wkc = 3;
+                else if (codeName.indexOf('_s4') !== -1) wkc = 4;
+                else if (codeName.indexOf('_cier') !== -1 || codeName.indexOf('_s5') !== -1 || codeName.indexOf('_post') !== -1) wkc = 5;
+                else if (codeName.indexOf('_bien') !== -1 || codeName.indexOf('_pre') !== -1 || codeName.indexOf('_w0') !== -1 || codeName.indexOf('_b_') !== -1 || codeName.endsWith('_b')) wkc = 0;
+
+                if (wkc !== -1) {
+                    eval_lms_w[wkc]++;
+                }
             }
         }
 
-        // 2. Mapeo de Timestamps LMS y consolidación de Criterios Evaluados
+        // 2. Mapeo de Timestamps LMS (Tiempos Raw para clustering, fuera de plazo y fallback)
         for (var t = 0; t < idxTsLms.length; t++) {
             var colIndex = idxTsLms[t];
             var codeName = String(headerCodes[colIndex]).trim().toLowerCase();
@@ -177,8 +204,6 @@ function getMetricasCoordinadores(forceSync) {
                     tieneTsLms = true;
                 }
             }
-
-            var isEvaluated = hasValidTs || !!evaluatedCriteriaMap[baseCode];
 
             var wk = -1;
             if (codeName.indexOf('_s1') !== -1) wk = 1;
@@ -219,8 +244,10 @@ function getMetricasCoordinadores(forceSync) {
                         }
                     }
                 }
-                if (isEvaluated) {
+                // Fallback: si tiene timestamp válido pero no tenía nota numérica > 0, se cuenta como evaluado
+                if (hasValidTs && !evaluatedCriteriaMap[baseCode]) {
                     eval_lms_w[wk]++;
+                    evaluatedCriteriaMap[baseCode] = true;
                 }
             }
         }

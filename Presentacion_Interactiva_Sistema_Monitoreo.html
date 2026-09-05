@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Presentación Ejecutiva: Sistema de Monitoreo de Calidad y Desempeño Docente | USMP Virtual</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --usmp-navy: #1A365D;
+      --usmp-navy-dark: #0F172A;
+      --usmp-red: #8B0000;
+      --usmp-red-light: #991B1B;
+      --usmp-gold: #D97706;
+      --usmp-green: #15803D;
+      --usmp-green-bg: #DCFCE7;
+      --bg-slate: #F8FAFC;
+      --card-bg: #FFFFFF;
+      --border-color: #E2E8F0;
+      --text-main: #1E293B;
+      --text-muted: #64748B;
+      --shadow-sm: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+      --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.08), 0 2px 4px -1px rgba(0,0,0,0.04);
+      --shadow-lg: 0 12px 24px -4px rgba(0,0,0,0.12), 0 4px 6px -2px rgba(0,0,0,0.05);
+      --font-main: 'Plus Jakarta Sans', sans-serif;
+      --font-display: 'Outfit', sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: var(--font-main);
+      background-color: var(--usmp-navy-dark);
+      color: var(--text-main);
+      overflow: hidden;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      user-select: none;
+    }
+
+    /* Top Control Bar */
+    .top-bar {
+      height: 52px;
+      background: rgba(15, 23, 42, 0.95);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      color: #FFF;
+      z-index: 100;
+    }
+
+    .brand-logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 15px;
+      letter-spacing: 0.5px;
+    }
+
+    .badge-usmp {
+      background: var(--usmp-red);
+      color: #FFF;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 1px;
+    }
+
+    .nav-controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .btn-nav {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: #FFF;
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s ease;
+    }
+
+    .btn-nav:hover {
+      background: rgba(255, 255, 255, 0.2);
+      border-color: rgba(255, 255, 255, 0.3);
+      transform: translateY(-1px);
+    }
+
+    .btn-nav:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .slide-counter {
+      font-size: 13px;
+      font-weight: 600;
+      color: #94A3B8;
+      min-width: 70px;
+      text-align: center;
+    }
+
+    /* Main Slide Stage */
+    .slide-stage {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .slide {
+      position: absolute;
+      width: 100%;
+      max-width: 1180px;
+      height: 92%;
+      max-height: 680px;
+      background: var(--card-bg);
+      border-radius: 16px;
+      box-shadow: var(--shadow-lg);
+      padding: 44px 52px;
+      display: flex;
+      flex-direction: column;
+      opacity: 0;
+      transform: scale(0.96) translateX(40px);
+      pointer-events: none;
+      transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1), transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+      overflow-y: auto;
+    }
+
+    .slide.active {
+      opacity: 1;
+      transform: scale(1) translateX(0);
+      pointer-events: auto;
+    }
+
+    /* Slide Header */
+    .slide-header {
+      margin-bottom: 24px;
+      border-bottom: 2px solid var(--border-color);
+      padding-bottom: 14px;
+    }
+
+    .slide-tag {
+      font-size: 11px;
+      font-weight: 800;
+      color: var(--usmp-red);
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+      font-family: var(--font-display);
+    }
+
+    .slide-title {
+      font-family: var(--font-display);
+      font-size: 26px;
+      font-weight: 700;
+      color: var(--usmp-navy);
+      line-height: 1.2;
+    }
+
+    /* Cover Slide */
+    .slide-cover {
+      background: linear-gradient(135deg, var(--usmp-navy) 0%, var(--usmp-navy-dark) 100%);
+      color: #FFF;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .slide-cover::after {
+      content: "";
+      position: absolute;
+      top: -50%;
+      right: -20%;
+      width: 600px;
+      height: 600px;
+      background: radial-gradient(circle, rgba(139, 0, 0, 0.35) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .cover-content {
+      position: relative;
+      z-index: 2;
+    }
+
+    .cover-eyebrow {
+      color: #CBD5E1;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      margin-bottom: 12px;
+    }
+
+    .cover-title {
+      font-family: var(--font-display);
+      font-size: 36px;
+      font-weight: 800;
+      line-height: 1.18;
+      margin-bottom: 16px;
+      background: linear-gradient(to right, #FFFFFF, #E2E8F0);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .cover-subtitle {
+      font-size: 17px;
+      color: #FCD34D;
+      font-weight: 600;
+      margin-bottom: 28px;
+      max-width: 850px;
+      line-height: 1.4;
+    }
+
+    .cover-meta {
+      display: flex;
+      gap: 24px;
+      font-size: 12.5px;
+      color: #94A3B8;
+      border-top: 1px solid rgba(255, 255, 255, 0.15);
+      padding-top: 18px;
+    }
+
+    .cover-meta-item strong {
+      color: #FFF;
+      display: block;
+      margin-bottom: 2px;
+    }
+
+    /* Grids & Cards */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      flex: 1;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+      flex: 1;
+    }
+
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      flex: 1;
+    }
+
+    .feature-card {
+      background: var(--bg-slate);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      transition: all 0.2s ease;
+    }
+
+    .feature-card:hover {
+      transform: translateY(-3px);
+      box-shadow: var(--shadow-md);
+      border-color: #CBD5E1;
+    }
+
+    .card-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      font-weight: 800;
+      margin-bottom: 12px;
+    }
+
+    .icon-red { background: #FEE2E2; color: var(--usmp-red); }
+    .icon-navy { background: #E0E7FF; color: var(--usmp-navy); }
+    .icon-green { background: #DCFCE7; color: var(--usmp-green); }
+    .icon-gold { background: #FEF3C7; color: var(--usmp-gold); }
+
+    .card-title {
+      font-family: var(--font-display);
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--usmp-navy);
+      margin-bottom: 8px;
+    }
+
+    .card-text {
+      font-size: 12.5px;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    /* Big Metric Stat Cards */
+    .stat-card {
+      background: #FFF;
+      border-radius: 14px;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      border: 2px solid;
+      justify-content: center;
+    }
+
+    .stat-card.green {
+      border-color: var(--usmp-green);
+      background: #F0FDF4;
+    }
+
+    .stat-card.navy {
+      border-color: var(--usmp-navy);
+      background: #F0F4F8;
+    }
+
+    .stat-card.red {
+      border-color: var(--usmp-red);
+      background: #FEF2F2;
+    }
+
+    .stat-number {
+      font-family: var(--font-display);
+      font-size: 46px;
+      font-weight: 800;
+      line-height: 1;
+      margin-bottom: 8px;
+    }
+
+    .stat-card.green .stat-number { color: var(--usmp-green); }
+    .stat-card.navy .stat-number { color: var(--usmp-navy); }
+    .stat-card.red .stat-number { color: var(--usmp-red); }
+
+    .stat-label {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text-main);
+      margin-bottom: 6px;
+    }
+
+    .stat-desc {
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+
+    /* Comparison Table */
+    .table-container {
+      width: 100%;
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid var(--border-color);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .comp-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      text-align: left;
+    }
+
+    .comp-table th {
+      background: var(--usmp-navy);
+      color: #FFF;
+      padding: 11px 13px;
+      font-weight: 700;
+      font-size: 12px;
+    }
+
+    .comp-table td {
+      padding: 10px 13px;
+      border-bottom: 1px solid var(--border-color);
+      line-height: 1.35;
+    }
+
+    .comp-table tr:nth-child(even) td {
+      background: #F8FAFC;
+    }
+
+    .time-badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-weight: 700;
+      font-size: 11px;
+      text-align: center;
+    }
+
+    .badge-bad { background: #FEE2E2; color: #991B1B; }
+    .badge-good { background: #DCFCE7; color: #166534; }
+
+    /* Progress Bar */
+    .progress-bar-container {
+      height: 4px;
+      background: rgba(255, 255, 255, 0.1);
+      width: 100%;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--usmp-red), var(--usmp-gold));
+      width: 14.2%;
+      transition: width 0.3s ease;
+    }
+
+    @media print {
+      body {
+        overflow: visible;
+        height: auto;
+        background: #FFF;
+      }
+      .top-bar, .progress-bar-container {
+        display: none !important;
+      }
+      .slide-stage {
+        padding: 0;
+        display: block;
+      }
+      .slide {
+        position: relative;
+        opacity: 1 !important;
+        transform: none !important;
+        page-break-after: always;
+        max-height: none;
+        height: 100vh;
+        box-shadow: none;
+        border: none;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Bar -->
+  <header class="top-bar">
+    <div class="brand-logo">
+      <span class="badge-usmp">USMP</span>
+      <span>VIRTUAL • SISTEMA DE MONITOREO DE CALIDAD</span>
+    </div>
+
+    <div class="nav-controls">
+      <button class="btn-nav" id="btnPrev" onclick="prevSlide()">◀ Anterior</button>
+      <span class="slide-counter" id="slideCounter">1 / 7</span>
+      <button class="btn-nav" id="btnNext" onclick="nextSlide()">Siguiente ▶</button>
+      <button class="btn-nav" onclick="toggleFullScreen()" title="Pantalla Completa (F)">⛶</button>
+      <button class="btn-nav" onclick="window.print()" title="Imprimir o Exportar PDF">🖨️ PDF</button>
+    </div>
+  </header>
+
+  <div class="progress-bar-container">
+    <div class="progress-bar-fill" id="progressBar"></div>
+  </div>
+
+  <!-- Slide Stage -->
+  <main class="slide-stage">
+
+    <!-- SLIDE 1: PORTADA -->
+    <section class="slide slide-cover active" id="slide-1">
+      <div class="cover-content">
+        <div class="cover-eyebrow">Universidad de San Martín de Porres • USMP Virtual</div>
+        <h1 class="cover-title">Sistema de Monitoreo del Cumplimiento de los Estándares de Calidad y Desempeño Docente</h1>
+        <p class="cover-subtitle">Automatización Integral de Supervisión LMS, Acompañamiento Pedagógico, Acreditación y Business Intelligence</p>
+        
+        <div class="cover-meta">
+          <div class="cover-meta-item">
+            <strong>Arquitectura Serverless</strong>
+            Google Workspace (GAS + Sheets + Drive + Docs API)
+          </div>
+          <div class="cover-meta-item">
+            <strong>Alcance Institucional</strong>
+            Pregrado y Posgrado (Virtual, Presencial e Híbrida)
+          </div>
+          <div class="cover-meta-item">
+            <strong>Impacto Operativo</strong>
+            80.5% de Ahorro de Tiempo y Cero Costo de Servidores
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SLIDE 2: DIAGNÓSTICO -->
+    <section class="slide" id="slide-2">
+      <div class="slide-header">
+        <div class="slide-tag">Diagnóstico de la Problemática</div>
+        <h2 class="slide-title">El Desafío: Ineficiencias del Modelo Tradicional</h2>
+      </div>
+
+      <div class="grid-4">
+        <div class="feature-card">
+          <div class="card-icon icon-red">01</div>
+          <h3 class="card-title">Bloqueos y Concurrencia</h3>
+          <p class="card-text">Uso de archivos Excel compartidos sin control de colisión, provocando sobreescrituras accidentales y pérdida de evaluaciones entre coordinadores.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="card-icon icon-red">02</div>
+          <h3 class="card-title">Cruce Manual de Notas</h3>
+          <p class="card-text">Jornadas enteras cruzando manualmente las notas de supervisión de aulas LMS con Acompañamiento Pedagógico por DNI con alto riesgo de error.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="card-icon icon-red">03</div>
+          <h3 class="card-title">Fichas en Word Manuales</h3>
+          <p class="card-text">Transcripción artesanal de actas y fichas de acreditación (~15 min por curso), sumando cientos de horas hombre de digitación repetitiva.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="card-icon icon-red">04</div>
+          <h3 class="card-title">Ceguera de Avance en Vivo</h3>
+          <p class="card-text">Desconocimiento de indicadores clave de avance y debilidades pedagógicas hasta el cierre del semestre, impidiendo acciones oportunas.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- SLIDE 3: ARQUITECTURA -->
+    <section class="slide" id="slide-3">
+      <div class="slide-header">
+        <div class="slide-tag">Arquitectura de Software</div>
+        <h2 class="slide-title">Ecosistema Modular Integrado (8 Subsistemas)</h2>
+      </div>
+
+      <div class="grid-4">
+        <div class="feature-card">
+          <div class="card-icon icon-navy">🔒</div>
+          <h3 class="card-title">Seguridad y LockService</h3>
+          <p class="card-text">Autenticación USMP, roles jerárquicos, Row-Level Security y cerrojo lógico temporal que previene infaliblemente la corrupción de datos.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="card-icon icon-navy">⚡</div>
+          <h3 class="card-title">Operativo LMS y Semáforo</h3>
+          <p class="card-text">Indexación dinámica de rúbricas (códigos c_1_1/cp_1_1), timestamps de auditoría (_ts) y reloj de 31 días en Acompañamiento Pedagógico.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="card-icon icon-navy">📄</div>
+          <h3 class="card-title">Motor de Fichas (Docs API)</h3>
+          <p class="card-text">Generación con 1 clic de actas y fichas oficiales con RegEx, validación estricta de semanas completadas y archivo automático en Drive.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="card-icon icon-navy">📊</div>
+          <h3 class="card-title">Business Intelligence</h3>
+          <p class="card-text">Data Mart 'Sábana General' de 72 columnas, doble gráfico interactivo y BI de productividad de coordinadores con clustering.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- SLIDE 4: CUADRO COMPARATIVO -->
+    <section class="slide" id="slide-4">
+      <div class="slide-header">
+        <div class="slide-tag">Eficiencia Operativa</div>
+        <h2 class="slide-title">Análisis Comparativo de Procesos y Tiempos</h2>
+      </div>
+
+      <div class="table-container">
+        <table class="comp-table">
+          <thead>
+            <tr>
+              <th>Actividad / Proceso de Monitoreo</th>
+              <th>Método Tradicional (Excel / Manual)</th>
+              <th style="text-align:center;">Tiempo Trad.</th>
+              <th>Sistema Web de Monitoreo USMP</th>
+              <th style="text-align:center;">Tiempo Sistema</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>1. Supervisión de Aula LMS</strong></td>
+              <td>Búsqueda en Excel, digitación de notas y cálculo manual.</td>
+              <td style="text-align:center;"><span class="time-badge badge-bad">25 min</span></td>
+              <td>Formulario web responsivo, autocompletado y timestamps.</td>
+              <td style="text-align:center;"><span class="time-badge badge-good">6 min</span></td>
+            </tr>
+            <tr>
+              <td><strong>2. Ficha de Observación</strong></td>
+              <td>Copia manual de notas a plantilla Word y exportar a PDF.</td>
+              <td style="text-align:center;"><span class="time-badge badge-bad">15 min</span></td>
+              <td>Generación con 1 clic mediante Google Docs API a Drive.</td>
+              <td style="text-align:center;"><span class="time-badge badge-good">30 seg (Auto)</span></td>
+            </tr>
+            <tr>
+              <td><strong>3. Consolidación de Notas</strong></td>
+              <td>Cruce manual de notas LMS + Acompañamiento por DNI.</td>
+              <td style="text-align:center;"><span class="time-badge badge-bad">12 horas</span></td>
+              <td>Cálculo en memoria RAM y DataTables de 33 columnas.</td>
+              <td style="text-align:center;"><span class="time-badge badge-good">0 min (Auto)</span></td>
+            </tr>
+            <tr>
+              <td><strong>4. Extracción de Fallas</strong></td>
+              <td>Revisión visual celda por celda y redacción de textos.</td>
+              <td style="text-align:center;"><span class="time-badge badge-bad">8 min / doc.</span></td>
+              <td>Extractor que convierte códigos a texto en pastillas visuales.</td>
+              <td style="text-align:center;"><span class="time-badge badge-good">0 min (Auto)</span></td>
+            </tr>
+            <tr>
+              <td><strong>5. Notificación y Reporte</strong></td>
+              <td>Redacción de correos individuales y copia manual.</td>
+              <td style="text-align:center;"><span class="time-badge badge-bad">10 min / doc.</span></td>
+              <td>Plantilla oficial con fórmulas vigesimales y WhatsApp Web.</td>
+              <td style="text-align:center;"><span class="time-badge badge-good">1 min</span></td>
+            </tr>
+            <tr style="background: #EBF8FF; font-weight: 700;">
+              <td><strong>TOTALES POR CICLO</strong></td>
+              <td>Horas totales estimadas en tareas operativas</td>
+              <td style="text-align:center;"><span class="time-badge badge-bad">~180 Horas</span></td>
+              <td>Horas optimizadas en plataforma centralizada</td>
+              <td style="text-align:center;"><span class="time-badge badge-good">~35 Horas (-80.5%)</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- SLIDE 5: BIG STATS -->
+    <section class="slide" id="slide-5">
+      <div class="slide-header">
+        <div class="slide-tag">Métricas de Impacto</div>
+        <h2 class="slide-title">Impacto Cuantitativo: 80.5% de Reducción en Carga Operativa</h2>
+      </div>
+
+      <div class="grid-3">
+        <div class="stat-card green">
+          <div class="stat-number">-80.5%</div>
+          <div class="stat-label">Optimización de Tiempo</div>
+          <div class="stat-desc">De ~180 horas a solo 35 horas totales por semestre en tareas de supervisión y gestión administrativa.</div>
+        </div>
+
+        <div class="stat-card navy">
+          <div class="stat-number">145+ h</div>
+          <div class="stat-label">Horas Hombre Recuperadas</div>
+          <div class="stat-desc">Tiempo reasignado a acompañamiento pedagógico proactivo, retroalimentación y mejora continua del docente.</div>
+        </div>
+
+        <div class="stat-card red">
+          <div class="stat-number">1 Clic</div>
+          <div class="stat-label">Generación de Fichas</div>
+          <div class="stat-desc">Creación de actas con formato institucional oficial listas para auditorías de licenciamiento y acreditación.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SLIDE 6: BUSINESS INTELLIGENCE -->
+    <section class="slide" id="slide-6">
+      <div class="slide-header">
+        <div class="slide-tag">Business Intelligence</div>
+        <h2 class="slide-title">Inteligencia de Negocios y Toma de Decisiones</h2>
+      </div>
+
+      <div class="grid-4">
+        <div class="feature-card">
+          <div class="card-icon icon-gold">📈</div>
+          <h3 class="card-title">Sábana General (72 Cols)</h3>
+          <p class="card-text">Data Mart que consolida 19 cols de asignación, 38 de LMS, 11 de acompañamiento y scores vigesimales ponderados.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="card-icon icon-gold">🎯</div>
+          <h3 class="card-title">Doble Gráfico Dinámico</h3>
+          <p class="card-text">Visualización interactiva (Doughnut de niveles y Barras de criterios) adaptada dinámicamente a la modalidad del curso.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="card-icon icon-gold">⏱️</div>
+          <h3 class="card-title">Productividad del Equipo</h3>
+          <p class="card-text">Algoritmo de clustering que calcula el tiempo neto real de auditoría LMS descartando tiempos muertos (>30 min).</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="card-icon icon-gold">🏷️</div>
+          <h3 class="card-title">Pastillas Visuales (Pills)</h3>
+          <p class="card-text">Identificación instantánea en el consolidado de los criterios pedagógicos débiles que requieren refuerzo urgente.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- SLIDE 7: CONCLUSIONES -->
+    <section class="slide slide-cover" id="slide-7">
+      <div class="cover-content">
+        <div class="cover-eyebrow">Conclusiones y Recomendación Institucional</div>
+        <h2 class="cover-title" style="font-size:30px;">Transformación Digital de Alto Impacto</h2>
+        
+        <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 22px;">
+          <div style="background: rgba(255,255,255,0.08); padding: 11px 16px; border-radius: 8px; border-left: 4px solid #FCD34D; font-size: 13px;">
+            <strong>1. Cero Inversión en Infraestructura:</strong> Opera 100% sobre el Google Workspace institucional sin costo de servidores ni licenciamiento externo.
+          </div>
+          <div style="background: rgba(255,255,255,0.08); padding: 11px 16px; border-radius: 8px; border-left: 4px solid #4ADE80; font-size: 13px;">
+            <strong>2. Retorno Inmediato en Eficiencia (80.5%):</strong> Más de 145 horas hombre liberadas por semestre para elevar la calidad docente.
+          </div>
+          <div style="background: rgba(255,255,255,0.08); padding: 11px 16px; border-radius: 8px; border-left: 4px solid #60A5FA; font-size: 13px;">
+            <strong>3. Solidez en Acreditación:</strong> Generación instantánea de actas y evidencias inmutables para SUNEDU, SINEACE y auditorías internacionales.
+          </div>
+        </div>
+
+        <div style="background: rgba(217, 119, 6, 0.2); border: 1px solid #D97706; padding: 12px 18px; border-radius: 8px; color: #FDE68A; font-weight: 600; font-size: 13.5px;">
+          RECOMENDACIÓN: Institucionalizar la plataforma como el estándar único obligatorio de supervisión académica y acreditación de calidad en Pregrado y Posgrado.
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <script>
+    let currentSlide = 1;
+    const totalSlides = 7;
+
+    function updateSlide() {
+      document.querySelectorAll('.slide').forEach((s, idx) => {
+        if (idx + 1 === currentSlide) {
+          s.classList.add('active');
+        } else {
+          s.classList.remove('active');
+        }
+      });
+
+      document.getElementById('slideCounter').innerText = `${currentSlide} / ${totalSlides}`;
+      document.getElementById('btnPrev').disabled = currentSlide === 1;
+      document.getElementById('btnNext').disabled = currentSlide === totalSlides;
+      
+      const pct = (currentSlide / totalSlides) * 100;
+      document.getElementById('progressBar').style.width = `${pct}%`;
+    }
+
+    function nextSlide() {
+      if (currentSlide < totalSlides) {
+        currentSlide++;
+        updateSlide();
+      }
+    }
+
+    function prevSlide() {
+      if (currentSlide > 1) {
+        currentSlide--;
+        updateSlide();
+      }
+    }
+
+    function toggleFullScreen() {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      } else {
+        if (document.exitFullscreen) {
+          document.exitFullscreen();
+        }
+      }
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') {
+        nextSlide();
+      } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+        prevSlide();
+      } else if (e.key.toLowerCase() === 'f') {
+        toggleFullScreen();
+      }
+    });
+
+    updateSlide();
+  </script>
+</body>
+</html>
